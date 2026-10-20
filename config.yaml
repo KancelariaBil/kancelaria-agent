@@ -1,0 +1,51 @@
+# Konfiguracja i bezpieczniki Moniki. Zmiany WYŁĄCZNIE przez pull request (patrz CLAUDE.md).
+# Agent nie może modyfikować tego pliku; zmiana pliku w trakcie działania zatrzymuje agenta.
+
+# Tryb próbny: każda akcja zewnętrzna zapisuje się jako propozycja do akceptacji w terminalu.
+# Wyłączenie wymaga dosłownego `false`; każda inna wartość = tryb próbny.
+# Start: włączony. Wyłączamy decyzją Basi w PR, po pierwszych testach.
+dry_run: true
+
+# Integracje: "mock" (testowe) albo "gmail" (skrzynka Moniki przez IMAP/SMTP).
+integrations: gmail
+
+# Planer: "mock" (stała odpowiedź) albo "agent" (Claude z narzędziami kancelarii).
+planner: agent
+
+poll_interval_seconds: 30
+# Ile spraw Monika prowadzi naraz (w jednej sprawie zawsze po kolei).
+workers: 2
+
+# Zespół kancelarii – jedyne osoby, od których Monika przyjmuje zlecenia i do których pisze.
+# Pierwsza osoba dostaje zgłoszenia o mailach od obcych i raporty diagnostyczne.
+# ZMIANA LISTY WYMAGA ZGODY OSOBY ZATWIERDZAJĄCEJ (CLAUDE.md, zasada 1).
+team:
+  - "barbara.bil@kancelariabil.pl"
+  # - "aneta@kancelariabil.pl"        # adres do potwierdzenia
+  # - "agnieszka@kancelariabil.pl"    # adres do potwierdzenia
+
+# Wyszukiwanie przepisów i orzeczeń w internecie (tylko domeny z listy w planner_agent.py).
+web_research: true
+max_attachments_mb: 20
+
+paths:
+  database: data/agent.db
+  audit_log: logs/audit.jsonl
+  stop_file: STOP
+  projects: data/projects     # sprawy: dokumenty z maili, wygenerowane pisma
+  templates: data/wzory       # baza wzorów dokumentów (.docx), tylko do odczytu dla Moniki
+
+guardrails:
+  # Odbiorcy maili (pełny adres). Pusta lista = brak zgody na wysyłkę.
+  # Musi być podzbiorem zespołu. Do klientów, sądów i kontrahentów Monika nie pisze nigdy.
+  allowed_recipients:
+    - "barbara.bil@kancelariabil.pl"
+  # Odpowiedzi bezpośrednio do osób spoza kancelarii: wyłączone na stałe.
+  client_replies: false
+  allowed_clients: []
+  # Zakaz zmiany danych płatniczych (IBAN, konto, SWIFT...) w jakiejkolwiek akcji.
+  forbid_payment_data_changes: true
+
+audit:
+  max_bytes: 5000000
+  backup_count: 10

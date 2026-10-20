@@ -1,0 +1,10 @@
+[Unit]
+Description=Monika: pobranie zatwierdzonych zmian z GitHuba i restart
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/kancelaria-agent
+ExecStart=/home/ubuntu/kancelaria-agent/deploy/update.sh
+ExecStartPost=+/home/ubuntu/kancelaria-agent/deploy/apply-update.sh

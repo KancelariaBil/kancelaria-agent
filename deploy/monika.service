@@ -1,0 +1,39 @@
+[Unit]
+Description=Monika – asystentka AI kancelarii (kancelaria-agent)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/kancelaria-agent
+EnvironmentFile=-/home/ubuntu/kancelaria-agent/.env
+Environment=PYTHONUNBUFFERED=1
+Environment=DISABLE_AUTOUPDATER=1
+ExecStart=/home/ubuntu/kancelaria-agent/.venv/bin/python -m kancelaria_agent run
+Restart=always
+RestartSec=5
+# Kod wyjścia 3 = config.yaml zmieniony w trakcie działania: NIE restartuj automatycznie.
+RestartPreventExitStatus=3
+
+# Twarde ograniczenia: agent nie może zapisać do kodu, config.yaml ani deploy/.
+# Zapis tylko do data/ i logs/ oraz do stanu Claude Code (sesje).
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=/home/ubuntu/kancelaria-agent/data /home/ubuntu/kancelaria-agent/logs -/home/ubuntu/.claude -/home/ubuntu/.claude.json
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+CapabilityBoundingSet=
+# Sieć: tylko IPv4/IPv6 (IMAP/SMTP Gmaila, API Anthropic). Bez gniazd surowych i netlink.
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+
+[Install]
+WantedBy=multi-user.target
