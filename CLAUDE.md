@@ -2,8 +2,8 @@
 
 Monika – asystentka AI Kancelarii Adwokackiej adw. Barbary Bil (kancelariabil.pl). Działa jak pracownik
 z własną skrzynką: zespół (Basia, Aneta, Agnieszka) pisze do niej zlecenia mailem, ona odpowiada wynikiem
-(analiza, projekt pisma .docx, odsetki, research). Rdzeń kodu pochodzi z agenta Brandwise („Marek”,
-repo Lukasz904/brandwise-agent) – poprawki rdzenia trzeba przenosić ręcznie w obie strony.
+(analiza, projekt pisma .docx, odsetki, research). Projekt jest samodzielny – nie zależy od żadnego
+innego repozytorium ani konta.
 
 ## Zasady nienaruszalne
 1. **Agent (Monika) nie modyfikuje własnego kodu, `config.yaml`, bezpieczników (`guards.py`,
