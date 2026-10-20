@@ -1,6 +1,6 @@
 """Sprawy: katalog per klient/sprawa, wątek maili, bezpieczne ścieżki.
 
-W kodzie sprawa nazywa się „project” (wspólny rdzeń z agentem Brandwise); w promptach – „sprawa”.
+W kodzie sprawa nazywa się „project” (nazwa historyczna); w promptach – „sprawa”.
 Układ na dysku (data/projects/<slug>/):
 - dokumenty/  – załączniki z maili zespołu (<data>/<plik>); Monika tylko czyta,
 - pisma/      – dokumenty przygotowane przez Monikę (.docx, notatki) do wysłania zespołowi.

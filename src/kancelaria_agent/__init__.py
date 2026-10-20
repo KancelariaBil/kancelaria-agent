@@ -1,3 +1,3 @@
-"""kancelaria-agent: Monika – asystentka AI kancelarii (rdzeń wspólny z agentem Brandwise)."""
+"""kancelaria-agent: Monika – asystentka AI kancelarii (agent mailowy)."""
 
 __version__ = "0.1.0"
