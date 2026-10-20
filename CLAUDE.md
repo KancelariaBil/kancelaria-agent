@@ -38,7 +38,8 @@ innego repozytorium ani konta.
 - Dane na serwerze: `data/projects/<sprawa>/{dokumenty,pisma}`, `data/wzory/` (baza wzorów, tylko odczyt).
 - `tests/` – pytest; bezpieczniki, zespół, odsetki i tryb próbny muszą mieć pokrycie.
 - `deploy/` – usługa systemd `monika`, aktualizacje co 5 min z `main` (`monika-update.timer`).
-- `docs/instalacja.md` – instalacja na serwerze; `docs/plan.md` – etapy rozwoju.
+- `docs/stan.md` – co działa, co otwarte (aktualizuj w każdym istotnym PR); `docs/instalacja.md` – serwer;
+  `docs/plan.md` – etapy rozwoju; `docs/instrukcja-projektu-claude.md` – instrukcja projektu Claude zespołu.
 
 ## Komendy
 - Testy: `.venv/bin/pytest -q`

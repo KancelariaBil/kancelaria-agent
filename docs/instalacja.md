@@ -28,7 +28,7 @@ W `.env` wpisz: `ANTHROPIC_API_KEY` (konto kancelarii), `AGENT_EMAIL=biuro@kance
 Monika ufa mailom zespołu tylko z podpisem DKIM domeny kancelariabil.pl (albo DMARC=pass).
 admin.google.com → Aplikacje → Google Workspace → Gmail → Uwierzytelnianie e-maili → wygeneruj rekord
 DKIM, dodaj go w DNS domeny, kliknij „Rozpocznij uwierzytelnianie”. Zalecane też: rekord DMARC
-`_dmarc.kancelariabil.pl  TXT  v=DMARC1; p=quarantine`. Bez tego maile zespołu trafią do Basi jako
+`_dmarc.kancelariabil.pl  TXT  v=DMARC1; p=none` (ustawione 20.10.2026; ostrzej dopiero po sprawdzeniu, że MailerLite i inne systemy wysyłające jako kancelariabil.pl mają DKIM). Bez tego maile zespołu trafią do Basi jako
 „od nieznanego nadawcy” – nic nie wycieknie, ale Monika nie zacznie pracy.
 
 ## 3. Dostęp do skrzynki (Google)
