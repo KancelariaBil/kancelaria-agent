@@ -3,8 +3,9 @@
 
 # Tryb próbny: każda akcja zewnętrzna zapisuje się jako propozycja do akceptacji w terminalu.
 # Wyłączenie wymaga dosłownego `false`; każda inna wartość = tryb próbny.
-# Start: włączony. Wyłączamy decyzją Basi w PR, po pierwszych testach.
-dry_run: true
+# Wyłączony 20.10.2026 decyzją Łukasza: Monika wysyła naprawdę, ale wyłącznie do adresów z
+# allowed_recipients (obecnie tylko Basia) – każda odpowiedź i tak trafia tylko do kancelarii.
+dry_run: false
 
 # Integracje: "mock" (testowe) albo "gmail" (skrzynka Moniki przez IMAP/SMTP).
 integrations: gmail
