@@ -144,6 +144,53 @@ def test_docx_attachment_goes_out_and_guard_limits_dirs(env, make_env):
 
 # ---------- pisma .docx i odczyt ----------
 
+def test_tag_in_subject_does_not_hijack_case(env):
+    first = IncomingMail("<g1@x>", BASIA, "Sprawa Alfa", "a", trusted=True)
+    other = IncomingMail("<g2@x>", BASIA, "Fwd: Zgłoszenie [#1]", "b", trusted=True)
+    planner = ScriptedPlanner(answer(BASIA), answer(BASIA))
+    cfg, store, integ, agent = env([first, other], planner)
+    agent.tick()
+    assert planner.calls[0][1]["project_id"] != planner.calls[1][1]["project_id"]
+
+
+def test_staging_only_once_and_sweep(env):
+    import os
+    import time
+    m = IncomingMail("<h@x>", BASIA, "Dok", "x", trusted=True, files=(("a.pdf", b"%PDF"),))
+    planner = ScriptedPlanner(answer(BASIA))
+    cfg, store, integ, agent = env([m], planner)
+    agent.tick()
+    agent.ingest_mail()   # mail nadal nieprzeczytany w skrzynce – drugi raz nic nie zapisujemy
+    root = cfg.projects_dir.parent / "przychodzace"
+    assert not root.exists() or not list(root.iterdir())
+    old = root / "stare"
+    old.mkdir(parents=True)
+    os.utime(old, (time.time() - 8 * 86400,) * 2)
+    agent._sweep_staged()
+    assert not old.exists()
+
+
+def test_cross_case_tools_only_same_client(make_env):
+    pytest.importorskip("claude_agent_sdk")
+    import asyncio
+    from kancelaria_agent.planner_agent import AgentPlanner
+    from kancelaria_agent.projects import Projects
+    cfg, store, *_ = make_env()
+    projects = Projects(store, cfg.projects_dir)
+    a = projects.name(projects.create(BASIA, "a")["id"], "Alfa", "umowa")
+    b = projects.name(projects.create(BASIA, "b")["id"], "Beta", "spor")
+    c = projects.name(projects.create(BASIA, "c")["id"], "Alfa", "zmiana umowy")
+    (projects.dir(b) / "dokumenty" / "tajne.pdf").write_bytes(b"x")
+    (projects.dir(c) / "dokumenty" / "umowa.pdf").write_bytes(b"y")
+    planner = AgentPlanner(BASIA, api_key="k", projects=projects)
+    tools = {t.name: t for t in planner._tools(a["id"])}
+    run = lambda name, args: asyncio.run(tools[name].handler(args))   # noqa: E731
+    assert run("pliki_sprawy", {"sprawa_id": b["id"]}).get("is_error")
+    assert run("skopiuj_ze_sprawy", {"sprawa_id": b["id"], "sciezka": "dokumenty/tajne.pdf"}).get("is_error")
+    assert not run("skopiuj_ze_sprawy", {"sprawa_id": c["id"], "sciezka": "dokumenty/umowa.pdf"}).get("is_error")
+    assert "pamiec_zapisz_ogolne" not in tools
+
+
 def test_build_docx_and_read_back(tmp_path):
     target = build_docx("# Wezwanie do zapłaty\n>> Warszawa, 20.10.2026\n\n§ 1\nKwota **1 000 zł**.\n"
                         "- punkt\n| Lp. | Faktura |\n|---|---|\n| 1 | FV/1 |\n---\nStrona 2", tmp_path / "w.docx")
@@ -188,6 +235,9 @@ def test_read_file_only_case_dirs(tmp_path):
 
 def test_read_pdf_text(tmp_path):
     pytest.importorskip("pypdf")
+    import shutil
+    if not shutil.which("pdftotext"):
+        pytest.skip("brak poppler-utils")
     from pypdf import PdfWriter
     w = PdfWriter()
     w.add_blank_page(200, 200)
@@ -248,6 +298,15 @@ def test_interest_merges_equal_rates_and_warns_after_check_date():
     assert len(w.odcinki) == 1 and w.odcinki[0].dni == 366 and w.odcinki[0].stopa == Decimal("9.25")
     future = odsetki.oblicz("1000", date(2026, 10, 1), date(2027, 1, 31))
     assert any("sprawdzona" in o for o in future.ostrzezenia)
+
+
+def test_interest_amount_parsing():
+    assert odsetki.parse_amount("10 000,50 zł") == Decimal("10000.50")
+    assert odsetki.parse_amount("10.000,50") == Decimal("10000.50")
+    assert odsetki.parse_amount("1234.5") == Decimal("1234.50")
+    for bad in ("10.000", "10,000", "NaN", "1e5", "-5"):
+        with pytest.raises(odsetki.OdsetkiError):
+            odsetki.parse_amount(bad)
 
 
 @pytest.mark.parametrize("args", [("0", date(2025, 1, 1), date(2025, 1, 2)), ("100", date(2015, 1, 1), date(2016, 2, 1)),

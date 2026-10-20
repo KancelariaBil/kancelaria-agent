@@ -56,17 +56,31 @@ def docx_text(path: Path) -> str:
     return "\n".join(out).strip()
 
 
+def _run(cmd: list[str], timeout: int) -> subprocess.CompletedProcess:
+    """Proces pomocniczy w osobnej grupie: po przekroczeniu czasu ginie razem z dziećmi (np. soffice.bin)."""
+    import os
+    import signal
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+    try:
+        out, err = p.communicate(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        os.killpg(p.pid, signal.SIGKILL)
+        p.communicate()
+        raise DocumentError(f"przekroczony czas przetwarzania pliku ({timeout} s)") from None
+    if p.returncode != 0:
+        raise DocumentError(f"nie udało się przetworzyć pliku: {err.decode('utf-8', 'replace')[-300:]}")
+    return subprocess.CompletedProcess(cmd, p.returncode, out, err)
+
+
 def pdf_text(path: Path) -> tuple[str, int]:
-    from pypdf import PdfReader
-    reader = PdfReader(str(path))
-    pages = []
-    for i, page in enumerate(reader.pages, 1):
-        try:
-            t = page.extract_text() or ""
-        except Exception:   # noqa: BLE001 – uszkodzona strona nie przerywa odczytu reszty
-            t = ""
-        pages.append(f"--- strona {i} ---\n{t.strip()}")
-    return "\n".join(pages), len(reader.pages)
+    """Tekst PDF przez pdftotext (poppler) w osobnym procesie z limitem czasu – złośliwy PDF nie zawiesi Moniki."""
+    if not shutil.which("pdftotext"):
+        raise DocumentError("brak pdftotext na serwerze")
+    raw = _run(["pdftotext", "-layout", "-enc", "UTF-8", str(path), "-"], 90).stdout.decode("utf-8", "replace")
+    pages = raw.split("\f")
+    if pages and not pages[-1].strip():
+        pages = pages[:-1]
+    return "\n".join(f"--- strona {i} ---\n{t.strip()}" for i, t in enumerate(pages, 1)), max(1, len(pages))
 
 
 def pdf_page_images(path: Path, first: int, count: int = SCAN_PAGES) -> list[bytes]:
@@ -74,8 +88,8 @@ def pdf_page_images(path: Path, first: int, count: int = SCAN_PAGES) -> list[byt
     if not shutil.which("pdftoppm"):
         raise DocumentError("brak pdftoppm na serwerze – skanu nie da się obejrzeć")
     with tempfile.TemporaryDirectory() as d:
-        subprocess.run(["pdftoppm", "-jpeg", "-r", "110", "-f", str(first), "-l", str(first + count - 1),
-                        str(path), f"{d}/s"], check=True, timeout=120, capture_output=True)
+        _run(["pdftoppm", "-jpeg", "-r", "110", "-f", str(first), "-l", str(first + count - 1),
+              str(path), f"{d}/s"], 120)
         return [p.read_bytes() for p in sorted(Path(d).glob("s*.jpg"))]
 
 
@@ -87,15 +101,17 @@ def convert_with_libreoffice(path: Path, target: str = "docx") -> Path:
     out = Path(tempfile.mkdtemp(prefix="konw-"))
     profile = Path(tempfile.mkdtemp(prefix="lo-"))
     try:
-        subprocess.run([office, f"-env:UserInstallation=file://{profile}", "--headless", "--norestore",
-                        "--convert-to", target, "--outdir", str(out), str(path)],
-                       check=True, timeout=180, capture_output=True)
+        _run([office, f"-env:UserInstallation=file://{profile}", "--headless", "--norestore",
+              "--convert-to", target, "--outdir", str(out), str(path)], 180)
+        files = list(out.glob(f"*.{target}"))
+        if not files:
+            raise DocumentError("konwersja nie powiodła się")
+        return files[0]
+    except Exception:
+        shutil.rmtree(out, ignore_errors=True)
+        raise
     finally:
         shutil.rmtree(profile, ignore_errors=True)
-    files = list(out.glob(f"*.{target}"))
-    if not files:
-        raise DocumentError("konwersja nie powiodła się")
-    return files[0]
 
 
 def xlsx_text(path: Path) -> str:

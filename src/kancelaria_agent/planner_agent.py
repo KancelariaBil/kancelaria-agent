@@ -34,7 +34,7 @@ SERVER = "kancelaria"
 # Oficjalne źródła prawa (WebSearch: allowed_domains ⊆ tej listy; WebFetch: host w tej liście lub poddomena).
 OFFICIAL_DOMAINS = (
     "isap.sejm.gov.pl", "dziennikustaw.gov.pl", "monitorpolski.gov.pl", "sejm.gov.pl", "legislacja.gov.pl",
-    "gov.pl", "eureka.mf.gov.pl", "orzeczenia.nsa.gov.pl", "sn.pl", "orzeczenia.ms.gov.pl",
+    "www.gov.pl", "podatki.gov.pl", "biznes.gov.pl", "eureka.mf.gov.pl", "orzeczenia.nsa.gov.pl", "sn.pl", "orzeczenia.ms.gov.pl",
     "trybunal.gov.pl", "nbp.pl", "ekrs.ms.gov.pl", "prs.ms.gov.pl", "uodo.gov.pl", "eur-lex.europa.eu",
     "curia.europa.eu",
 )
@@ -164,7 +164,8 @@ class AgentPlanner:
             async def run(args: dict[str, Any]) -> dict[str, Any]:
                 try:
                     return fn(args)
-                except (pt.ToolError, odsetki.OdsetkiError, OSError, ValueError, KeyError, TypeError) as e:
+                except (pt.ToolError, odsetki.OdsetkiError, OSError, ValueError, KeyError, TypeError,
+                        ArithmeticError) as e:
                     return err(e)
             return run
 
@@ -226,28 +227,38 @@ class AgentPlanner:
             return {"content": pt.read_file(pdir(), args["sciezka"], args.get("od_znaku") or 0,
                                             args.get("strona"))}
 
-        @tool("pliki_sprawy", "Lista plików sprawy (bieżącej albo innej po numerze).",
+        def same_client(other) -> bool:
+            """Inne sprawy tylko tego samego klienta (konflikt interesów, wstrzyknięcia z dokumentów)."""
+            cur = self.projects.store.get_project(project_id)
+            a, b = str(cur["client"] or "").strip().lower(), str(other["client"] or "").strip().lower()
+            return bool(a) and a == b
+
+        @tool("pliki_sprawy", "Lista plików sprawy: bieżącej albo innej sprawy TEGO SAMEGO klienta (po numerze).",
               {"type": "object", "properties": {"sprawa_id": {"type": "integer"}}})
         @guarded
         def listing(args):
             pid = int(args.get("sprawa_id") or project_id)
             p = self.projects.store.get_project(pid)
-            if p is None:
-                return err(ValueError("brak takiej sprawy"))
+            if p is None or (pid != project_id and not same_client(p)):
+                return err(ValueError("brak takiej sprawy tego klienta"))
             return ok("\n".join(f"{n} ({s // 1024} KB)" for n, s in self.projects.list_files(p)) or "brak plików")
 
-        @tool("skopiuj_ze_sprawy", "Skopiuj dokument z innej sprawy (np. umowę spółki tego samego klienta) do "
+        @tool("skopiuj_ze_sprawy", "Skopiuj dokument z innej sprawy TEGO SAMEGO klienta (np. umowę spółki) do "
               "dokumenty/ bieżącej.", {"sprawa_id": int, "sciezka": str})
         @guarded
         def copy_other(args):
             import shutil
             other = self.projects.store.get_project(int(args["sprawa_id"]))
-            if other is None or other["id"] == project_id:
-                return err(ValueError("brak takiej sprawy"))
+            if other is None or other["id"] == project_id or not same_client(other):
+                return err(ValueError("brak takiej sprawy tego klienta"))
             src = pt._in(self.projects.dir(other), args["sciezka"], pt.READABLE)
             dst = pt._in(pdir(), f"dokumenty/ze-sprawy-{other['id']}/{src.name}", ("dokumenty",))
             if not src.is_file():
                 return err(ValueError("brak pliku"))
+            n = 2
+            while dst.exists():
+                dst = dst.with_name(f"{src.stem}-{n}{src.suffix}")
+                n += 1
             dst.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(src, dst)
             return ok(str(dst.relative_to(pdir())))
@@ -312,14 +323,9 @@ class AgentPlanner:
                 mem().add_fact("firma", oid, args["fakt"], project_id)
             return ok(mem().org_card(oid))
 
-        @tool("pamiec_zapisz_ogolne", "Zapamiętaj ogólną regułę pracy kancelarii (od zespołu).", {"fakt": str})
-        @guarded
-        def mem_general(args):
-            mem().add_fact("ogolne", 0, args["fakt"], project_id)
-            return ok("zapisane")
-
-        return tools + [read, listing, copy_other, docx_tool, note, mem_search, mem_card, mem_person, mem_org,
-                        mem_general]
+        # Bez zapisu „reguł ogólnych”: reguły dla wszystkich spraw dopisuje zespół przez PR (doswiadczenia.md) –
+        # inaczej dokument klienta z ukrytym poleceniem mógłby ustawić regułę dla całej kancelarii.
+        return tools + [read, listing, copy_other, docx_tool, note, mem_search, mem_card, mem_person, mem_org]
 
     def _options(self, project_id: int | None = None):
         from claude_agent_sdk import ClaudeAgentOptions, HookMatcher, create_sdk_mcp_server

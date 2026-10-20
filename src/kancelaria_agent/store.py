@@ -162,6 +162,9 @@ class Store:
         self.db.close()
 
     # --- kolejka zadań ---
+    def seen_ref(self, source_ref: str) -> bool:
+        return self.db.execute("SELECT 1 FROM processed_refs WHERE source_ref=?", (source_ref,)).fetchone() is not None
+
     def enqueue(self, kind: str, payload: dict[str, Any], source_ref: str | None = None) -> int | None:
         """Dodaje zadanie; zwraca None, jeśli source_ref był już kiedykolwiek przyjęty (deduplikacja).
 

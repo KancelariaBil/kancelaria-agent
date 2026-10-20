@@ -24,6 +24,13 @@ cp .env.example .env && chmod 600 .env && nano .env
 W `.env` wpisz: `ANTHROPIC_API_KEY` (konto kancelarii), `AGENT_EMAIL=biuro@kancelariabil.pl`,
 `GMAIL_CLIENT_ID` i `GMAIL_CLIENT_SECRET` (krok 3). Zapisz: Ctrl+O, Enter, Ctrl+X.
 
+## 3a. Podpis DKIM domeny (raz, konsola administratora Google)
+Monika ufa mailom zespołu tylko z podpisem DKIM domeny kancelariabil.pl (albo DMARC=pass).
+admin.google.com → Aplikacje → Google Workspace → Gmail → Uwierzytelnianie e-maili → wygeneruj rekord
+DKIM, dodaj go w DNS domeny, kliknij „Rozpocznij uwierzytelnianie”. Zalecane też: rekord DMARC
+`_dmarc.kancelariabil.pl  TXT  v=DMARC1; p=quarantine`. Bez tego maile zespołu trafią do Basi jako
+„od nieznanego nadawcy” – nic nie wycieknie, ale Monika nie zacznie pracy.
+
 ## 3. Dostęp do skrzynki (Google)
 W Google Cloud na koncie kancelarii: nowy projekt → włącz Gmail API → ekran zgody „Wewnętrzny” →
 Dane logowania → Identyfikator klienta OAuth, typ „Aplikacja internetowa”, URI przekierowania

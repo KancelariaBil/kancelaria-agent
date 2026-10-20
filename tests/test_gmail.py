@@ -200,8 +200,11 @@ REAL_INTERNAL = ("mx.google.com; dkim=pass header.i=@brandwise-pl.20251104.gapps
                  "209.85.220.41 as permitted sender) smtp.mailfrom=szef@brandwise.pl")
 
 
-def test_workspace_internal_mail_with_aligned_spf_is_trusted():
-    assert parse_message(_with_headers([REAL_INTERNAL], body="Zrób baner"), OWNER, "f").trusted
+def test_spf_alone_is_not_enough():
+    """Workspace bez DKIM domeny (tylko gappssmtp) i bez DMARC: samo SPF nie daje zaufania."""
+    assert not parse_message(_with_headers([REAL_INTERNAL], body="Zrób baner"), OWNER, "f").trusted
+    signed = REAL_INTERNAL.replace("header.i=@brandwise-pl.20251104.gappssmtp.com", "header.i=@brandwise.pl")
+    assert parse_message(_with_headers([signed], body="Zrób baner"), OWNER, "f").trusted
 
 
 def test_spf_for_other_domain_not_trusted():

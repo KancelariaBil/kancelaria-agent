@@ -182,10 +182,11 @@ def authenticated(msg, owner: str) -> bool:
 
     Nadawca może dopisać własny Authentication-Results, ale Gmail zawsze dokłada swój nagłówek
     NA GÓRZE. Liczy się wyłącznie pierwszy nagłówek, i tylko z authserv-id mx.google.com.
-    Wystarczy jeden z wyników wyrównanych z domeną OWNER_EMAIL:
-    - dmarc=pass z header.from = domena właściciela,
-    - spf=pass z smtp.mailfrom w domenie właściciela (Workspace bez rekordu DMARC),
-    - dkim=pass podpisany domeną właściciela.
+    Wystarczy jeden z wyników wyrównanych z domeną nadawcy:
+    - dmarc=pass z header.from = domena nadawcy,
+    - dkim=pass podpisany domeną nadawcy (Workspace: Admin → Gmail → Uwierzytelnianie e-maili).
+    Samo spf=pass NIE wystarcza (inaczej niż u agenta Brandwise): SPF dotyczy koperty, nie nagłówka From,
+    a współdzielone serwery pocztowe pozwalałyby podszyć się pod adres zespołu.
     Jawne dmarc=fail/quarantine/reject zawsze odrzuca.
     """
     results = msg.get_all("Authentication-Results") or []
@@ -207,10 +208,6 @@ def authenticated(msg, owner: str) -> bool:
                 return False
             m = _HEADER_FROM_RE.search(resinfo)
             if m and m.group(1).strip().lower() == owner_domain:
-                aligned = True
-        elif _SPF_PASS_RE.match(resinfo):
-            m = _MAILFROM_RE.search(resinfo)
-            if m and _domain(m.group(1)) == owner_domain:
                 aligned = True
         elif _DKIM_PASS_RE.match(resinfo):
             m = _DKIM_ID_RE.search(resinfo)

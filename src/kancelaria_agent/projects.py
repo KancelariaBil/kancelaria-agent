@@ -183,11 +183,8 @@ class Projects:
     def find_for_mail(self, subject: str, refs: list[str], sender: str | None = None):
         """Projekt z tagu [#id], z nagłówków In-Reply-To/References, a dla odpowiedzi (Re:/Odp:)
         bez tych nagłówków – z tematu wątku (ten sam nadawca, ostatnie 90 dni)."""
-        pid = tag_in(subject)
-        if pid is not None:
-            p = self.store.get_project(pid)
-            if p:
-                return p
+        # Tagu [#id] w temacie NIE używamy: systemy zgłoszeń wstawiają takie tagi do tematów, a mail
+        # trafiłby do cudzej sprawy (z dokumentami i pamięcią tamtej sprawy).
         p = self.store.project_by_message(refs) if refs else None
         if p is None and sender and is_reply_subject(subject):
             base = base_subject(subject)

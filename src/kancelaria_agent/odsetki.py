@@ -90,7 +90,8 @@ class Wynik:
         lines = [f"{NAZWY[self.rodzaj]} od kwoty {zl(self.kapital)}:"]
         for o in self.odcinki:
             lines.append(f"- {o.od:%d.%m.%Y}–{o.do:%d.%m.%Y}: {o.dni} dni × {fmt_pct(o.stopa)} = {zl(o.kwota)}")
-        lines.append(f"Razem odsetki: {zl(self.suma)} (dni liczone włącznie z obiema datami, rok = 365 dni)")
+        lines.append(f"Razem odsetki: {zl(self.suma)} (dni liczone włącznie z obiema datami, rok = 365 dni "
+                     "także w latach przestępnych – część sądów i kalkulatorów liczy 366)")
         lines += [f"UWAGA: {w}" for w in self.ostrzezenia]
         return "\n".join(lines)
 
@@ -141,10 +142,7 @@ def _granice(rodzaj: str, od: date, do: date) -> list[date]:
 def oblicz(kapital, od: date, do: date, rodzaj: str = "opoznienie", podmiot_leczniczy: bool = False,
            transakcja_przed_2020: bool = False) -> Wynik:
     """Odsetki od `kapital` za dni od `od` do `do` włącznie (pierwszy dzień opóźnienia – dzień zapłaty)."""
-    try:
-        kapital = Decimal(str(kapital).replace(" ", "").replace(",", ".")).quantize(Decimal("0.01"))
-    except Exception:
-        raise OdsetkiError("niepoprawna kwota") from None
+    kapital = parse_amount(kapital)
     if kapital <= 0 or kapital > Decimal("1000000000"):
         raise OdsetkiError("kwota musi być dodatnia (do 1 mld zł)")
     if rodzaj not in RODZAJE:
@@ -159,9 +157,9 @@ def oblicz(kapital, od: date, do: date, rodzaj: str = "opoznienie", podmiot_lecz
     if do > SPRAWDZONO:
         ostrz.append(f"tabela stóp sprawdzona do {SPRAWDZONO:%d.%m.%Y}; dla dni po tej dacie przyjęto ostatnią "
                      "znaną stopę – sprawdź, czy RPP jej nie zmieniła")
-    if rodzaj == "handlowe" and od.year < 2020 and not transakcja_przed_2020:
-        ostrz.append("okres przed 2020: przyjęto +8 pp; dla transakcji zawartych przed 1.01.2020 stawka +8 pp "
-                     "obowiązuje także później (ustaw transakcja_przed_2020)")
+    if rodzaj == "handlowe" and not transakcja_przed_2020 and do.year >= 2020:
+        ostrz.append("przyjęto +10 pp od 2020 r.; jeśli transakcję zawarto przed 1.01.2020, stosuje się +8 pp "
+                     "także później – policz ponownie z transakcja_zawarta_przed_2020")
     odcinki = []
     start = od
     for g in [*_granice(rodzaj, od, do), do + timedelta(days=1)]:
@@ -179,6 +177,21 @@ def oblicz(kapital, od: date, do: date, rodzaj: str = "opoznienie", podmiot_lecz
         odcinki.append(Odcinek(start, end, s, dni, kwota))
         start = g
     return Wynik(rodzaj, kapital, tuple(odcinki), tuple(ostrz))
+
+
+def parse_amount(value) -> Decimal:
+    """Kwota: „10000”, „10 000,50”, „10000.50”, „10.000,50”. Odrzuca niejednoznaczne „10.000” i „10,000”."""
+    import re
+    s = str(value).strip().replace("\u00a0", "").replace(" ", "").replace("zł", "").replace("PLN", "")
+    if re.fullmatch(r"\d{1,3}([.,]\d{3})+", s):
+        raise OdsetkiError(f"niejednoznaczna kwota {value!r} – podaj bez separatorów tysięcy, np. 10000,00")
+    if "," in s and "." in s:
+        s = s.replace(".", "").replace(",", ".")
+    else:
+        s = s.replace(",", ".")
+    if not re.fullmatch(r"\d+(\.\d{1,2})?", s):
+        raise OdsetkiError(f"niepoprawna kwota {value!r}")
+    return Decimal(s).quantize(Decimal("0.01"))
 
 
 def parse_date(value: str) -> date:

@@ -63,7 +63,8 @@ class Agent:
                        "reply_to": mail.reply_to, "attachments": list(mail.attachments),
                        "in_reply_to": mail.in_reply_to, "references": list(mail.references), "data": mail.data,
                        "date": mail.date, "headers": mail.headers}
-            if mail.files:   # dokumenty od zespołu – na dysk od razu (kolejka trzyma tylko ścieżkę)
+            if mail.files and not mail.data and not self.store.seen_ref(f"mail:{mail.message_id}"):
+                # dokumenty od zespołu – na dysk raz (kolejka trzyma tylko ścieżkę)
                 payload["staged"] = self._stage_files(mail.message_id, mail.files)
             if mail.data:   # import pamięci – osobny klucz, więc działa też dla maila przetworzonego wcześniej
                 if self.store.enqueue("import", {"sender": mail.sender, "data": mail.data, "trusted": mail.trusted,
@@ -90,6 +91,18 @@ class Agent:
                 n += 1
             target.write_bytes(data)
         return str(d)
+
+    def _sweep_staged(self, max_age_h: int = 7 * 24) -> None:
+        """Dokumenty, które nie trafiły do żadnej sprawy (np. mail odrzucony), nie leżą dłużej niż tydzień."""
+        import shutil
+        root = self.cfg.projects_dir.parent / "przychodzace"
+        if not root.is_dir():
+            return
+        cutoff = time.time() - max_age_h * 3600
+        for d in root.iterdir():
+            if d.is_dir() and not d.is_symlink() and d.stat().st_mtime < cutoff:
+                shutil.rmtree(d, ignore_errors=True)
+                self.audit.record("staged_removed", dir=d.name)
 
     def _take_staged(self, project, payload: dict) -> list[str]:
         """Dokumenty z maila → <sprawa>/dokumenty/<data>/ (raz; potem katalog przejściowy znika)."""
@@ -371,6 +384,7 @@ class Agent:
             self.audit.record("resume", reason="plik STOP usunięty przez człowieka")
             self._halted = False
         self.ingest_mail()
+        self._sweep_staged()
         if self.workers <= 1:
             while not self._stop.is_set() and not guards.kill_switch_active(self.cfg) and self.process_next():
                 pass

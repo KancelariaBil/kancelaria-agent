@@ -11,9 +11,9 @@ from pathlib import Path
 
 def _tools() -> str:
     out = []
-    for name in ("soffice", "pdftoppm"):
+    for name in ("soffice", "pdftoppm", "pdftotext"):
         out.append(f"{name}: {'OK' if shutil.which(name) else 'BRAK'}")
-    for mod in ("docx", "pypdf", "openpyxl"):
+    for mod in ("docx", "openpyxl"):
         try:
             __import__(mod)
             out.append(f"{mod}: OK")
