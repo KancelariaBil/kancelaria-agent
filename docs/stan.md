@@ -1,6 +1,6 @@
 # Stan wdrożenia Moniki
 
-Aktualizuj ten plik przy każdej istotnej zmianie (PR). Ostatnia aktualizacja: 20.10.2026.
+Aktualizuj ten plik przy każdej istotnej zmianie (PR). Ostatnia aktualizacja: 28.10.2026.
 
 ## Działa
 - Serwer: OVH VPS-1 (2 vCore, 4 GB RAM), IP 54.39.231.254, Ubuntu 24.04, użytkownik `ubuntu`,
@@ -10,7 +10,8 @@ Aktualizuj ten plik przy każdej istotnej zmianie (PR). Ostatnia aktualizacja: 2
 - Skrzynka Moniki: biuro@kancelariabil.pl (Google Workspace kancelarii, tylko dla Moniki – nie podawać
   klientom). Logowanie OAuth: projekt Google Cloud „Monika poczta” (monika-poczta), ekran zgody
   wewnętrzny, klient OAuth `10144385402-a9u0sn4aahsq6imlff79us9cccq06ddi.apps.googleusercontent.com`.
-- Zespół (`team` w config.yaml): na razie tylko barbara.bil@kancelariabil.pl. Monika pisze tylko do Basi.
+- Zespół (`team` w config.yaml): barbara.bil@kancelariabil.pl oraz lukasz@brandwise.pl (autor projektu, pełny
+  dostęp na czas budowy i testów – decyzja Łukasza 28.10.2026). Monika pisze tylko do tych osób.
 - Tryb próbny wyłączony 20.10.2026 (decyzja Łukasza) – odpowiedzi wychodzą naprawdę, tylko do Basi.
 - DNS kancelariabil.pl: dodane rekordy `google._domainkey` (DKIM Google) i `_dmarc` (`v=DMARC1; p=none`).
 
@@ -20,6 +21,7 @@ Aktualizuj ten plik przy każdej istotnej zmianie (PR). Ostatnia aktualizacja: 2
 - [ ] Nowy klucz API Anthropic i nowy klucz klienta Google (obecne były wklejone w rozmowie z Łukaszem)
       – podmiana w `~/kancelaria-agent/.env` na serwerze, potem `sudo systemctl restart monika`.
 - [ ] Usunięcie Lukasz904 z Collaborators repo.
+- [ ] Usunięcie lukasz@brandwise.pl z `team` i `allowed_recipients` (gdy Łukasz o to poprosi).
 - [ ] Hasło użytkownika `ubuntu` na serwerze – zmiana na znane tylko kancelarii (`passwd`).
 - [ ] DNS kancelariabil.pl i strona kancelarii są na koncie MyDevil Brandwise (użytkownik „brand”,
       panel23.mydevil.net) – przenieść domenę na konto kancelarii.

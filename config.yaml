@@ -4,7 +4,7 @@
 # Tryb próbny: każda akcja zewnętrzna zapisuje się jako propozycja do akceptacji w terminalu.
 # Wyłączenie wymaga dosłownego `false`; każda inna wartość = tryb próbny.
 # Wyłączony 20.10.2026 decyzją Łukasza: Monika wysyła naprawdę, ale wyłącznie do adresów z
-# allowed_recipients (obecnie tylko Basia) – każda odpowiedź i tak trafia tylko do kancelarii.
+# allowed_recipients (obecnie Basia i Łukasz) – każda odpowiedź i tak trafia tylko do kancelarii.
 dry_run: false
 
 # Integracje: "mock" (testowe) albo "gmail" (skrzynka Moniki przez IMAP/SMTP).
@@ -22,6 +22,9 @@ workers: 2
 # ZMIANA LISTY WYMAGA ZGODY OSOBY ZATWIERDZAJĄCEJ (CLAUDE.md, zasada 1).
 team:
   - "barbara.bil@kancelariabil.pl"
+  # Łukasz – autor projektu: pełny dostęp na czas budowy i testów (decyzja Łukasza 28.10.2026),
+  # do usunięcia przy przekazaniu kancelarii na jego prośbę.
+  - "lukasz@brandwise.pl"
   # - "aneta@kancelariabil.pl"        # adres do potwierdzenia
   # - "agnieszka@kancelariabil.pl"    # adres do potwierdzenia
 
@@ -41,6 +44,7 @@ guardrails:
   # Musi być podzbiorem zespołu. Do klientów, sądów i kontrahentów Monika nie pisze nigdy.
   allowed_recipients:
     - "barbara.bil@kancelariabil.pl"
+    - "lukasz@brandwise.pl"
   # Odpowiedzi bezpośrednio do osób spoza kancelarii: wyłączone na stałe.
   client_replies: false
   allowed_clients: []
