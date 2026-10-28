@@ -40,7 +40,9 @@ def test_repo_config_sends_only_to_team():
     cfg = load_config(PROJECT_ROOT / "config.yaml")
     assert cfg.guardrails.client_replies is False
     assert cfg.integrations in ("mock", "gmail")
-    assert cfg.team and all(t.endswith("@kancelariabil.pl") for t in cfg.team)
+    # Wyjątek: autor projektu na czas budowy i testów (decyzja Łukasza 28.10.2026).
+    assert cfg.team and all(t.endswith("@kancelariabil.pl") or t == "lukasz@brandwise.pl" for t in cfg.team)
+    assert cfg.team[0].endswith("@kancelariabil.pl")   # raporty i zgłoszenia trafiają do kancelarii
     assert all(r in cfg.team for r in cfg.guardrails.allowed_recipients)
 
 
