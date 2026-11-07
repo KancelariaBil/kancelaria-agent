@@ -12,3 +12,6 @@ install -m 0644 "$DIR/deploy/monika-update.timer" /etc/systemd/system/monika-upd
 systemctl daemon-reload
 systemctl reset-failed monika 2>/dev/null || true
 systemctl restart monika
+# Raport serwisowy mailem do autora projektu (diagnoza bez SSH). Nie przerywa aktualizacji.
+sleep 20
+"$DIR/deploy/ops.sh" 2>&1 | "$DIR/.venv/bin/python" "$DIR/deploy/ops-report.py" || true
