@@ -6,7 +6,7 @@ DIR=/home/ubuntu/kancelaria-agent
 cd "$DIR" || exit 0
 sec() { echo; echo "===== $* ====="; }
 sec "czas, wersja kodu"
-date -u; uptime; git log -1 --format='%h %ci %s' 2>&1
+date -u; uptime; git -c safe.directory="$DIR" log -1 --format='%h %ci %s' 2>&1
 sec "usługi"
 systemctl is-enabled monika monika-update.timer 2>&1
 systemctl --no-pager status monika 2>&1 | head -n 15

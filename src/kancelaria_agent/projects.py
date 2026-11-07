@@ -150,6 +150,7 @@ class Projects:
     def __init__(self, store: Store, root: Path, web=None):
         self.store = store
         self.root = Path(root)
+        self.web = web
         self._memory = None
 
     @property

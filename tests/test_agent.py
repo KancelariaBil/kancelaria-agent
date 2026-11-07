@@ -76,3 +76,20 @@ def test_failed_planner_marks_task_failed(make_env):
     agent.planner = Boom()
     agent.tick()
     assert [t["status"] for t in store.tasks_by_status("failed")] == ["failed"]
+
+
+def test_parallel_workers_plan_in_thread(make_env):
+    """Produkcja ma workers>1: planowanie w wątku musi działać (regresja: Projects bez atrybutu web)."""
+    import time
+    cfg, store, audit, _, _ = make_env()
+    integ = build_mock([MAIL])
+    agent = Agent(cfg, store, audit, integ, MockPlanner(), workers=2)
+    assert agent.tick() == "ok"
+    for _ in range(100):
+        if not agent._running:
+            break
+        time.sleep(0.05)
+        agent.collect_done()
+    agent._pool.shutdown(wait=True)
+    assert not store.tasks_by_status("failed")
+    assert store.tasks_by_status("done")
