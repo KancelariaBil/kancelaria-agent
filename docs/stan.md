@@ -19,6 +19,10 @@ Aktualizuj ten plik przy każdej istotnej zmianie (PR). Ostatnia aktualizacja: 7
   dostęp serwisowy bez SSH: po każdej aktualizacji z `main` skrypt `deploy/ops.sh` (root) wysyła raport
   stanu mailem do autora projektu (`deploy/ops-report.py`, adresat musi być w `team`).
 
+- 7.11.2026: naprawiony błąd `'Projects' object has no attribute 'web'` – od 20.10 wywracał KAŻDE zlecenie
+  (przy `workers>1`) jeszcze przed modelem, dlatego Monika milczała (bez maila „przerwało mi pracę”).
+- Maile z lukasz@brandwise.pl Monika uznaje za obce: brandwise.pl nie ma DKIM Google ani DMARC.
+
 ## Do zrobienia przy przekazaniu (odcięcie od Brandwise / Łukasza)
 - [ ] admin.google.com → Uwierzytelnianie e-maili → „Rozpocznij uwierzytelnianie” (DKIM) – bez tego
       Monika nie uznaje maili zespołu (sprawdź: mail do Moniki o temacie „diagnostyka” od Basi).
