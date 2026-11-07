@@ -41,6 +41,7 @@ class Config:
     planner: str = "mock"
     projects_dir: Path = Path("data/projects")
     templates_dir: Path = Path("data/wzory")
+    knowledge_dir: Path = Path("data/wiedza")
     max_attachments_mb: int = 20
     workers: int = 1
     # Zespół kancelarii: zaufani nadawcy (zlecenia), pierwszy = osoba odpowiedzialna (raporty, zgłoszenia).
@@ -97,6 +98,7 @@ def load_config(path: Path | None = None) -> Config:
         stop_file=_resolve(root, paths.get("stop_file", "STOP")),
         projects_dir=_resolve(root, paths.get("projects", "data/projects")),
         templates_dir=_resolve(root, paths.get("templates", "data/wzory")),
+        knowledge_dir=_resolve(root, paths.get("knowledge", "data/wiedza")),
         max_attachments_mb=int(raw.get("max_attachments_mb", 20)),
         workers=max(1, min(5, int(raw.get("workers", 1)))),
         team=team,

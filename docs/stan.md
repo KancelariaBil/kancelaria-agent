@@ -24,6 +24,12 @@ Aktualizuj ten plik przy każdej istotnej zmianie (PR). Ostatnia aktualizacja: 7
 - 7.11.2026: włączony DKIM Google dla brandwise.pl (rekord `google._domainkey` w MyDevil) – maile Łukasza
   są zaufane. Test zlecenia (odsetki) przeszedł przez model – klucz API działa.
 
+- 7.11.2026: baza wiedzy – katalog `data/wiedza/`; Monika przeszukuje ją przy każdym zleceniu
+  (narzędzia `wiedza_szukaj`, `wiedza_czytaj`). Pliki dodaje zespół: mail o temacie „wiedza” z załącznikami
+  albo panel WWW (usługa `monika-www`, port 80, http://monika.kancelariabil.pl).
+  **Panel jest bez logowania (etap testów, decyzja Łukasza) – przed wgraniem prawdziwych dokumentów
+  kancelarii trzeba dodać logowanie.**
+
 ## Do zrobienia przy przekazaniu (odcięcie od Brandwise / Łukasza)
 - [ ] admin.google.com → Uwierzytelnianie e-maili → „Rozpocznij uwierzytelnianie” (DKIM) – bez tego
       Monika nie uznaje maili zespołu (sprawdź: mail do Moniki o temacie „diagnostyka” od Basi).

@@ -21,6 +21,21 @@ from .store import Store
 EXIT_CONFIG_TAMPERED = 3
 
 
+SERVICE_SUBJECTS = ("diagnostyka", "wiedza")
+
+
+def _service_subject(payload: dict) -> str:
+    """Temat maila serwisowego (bez „Re:”/„Fwd:”), np. „wiedza” – obsługa bez modelu."""
+    s = str(payload.get("subject", "")).strip().lower()
+    while True:
+        for p in ("re:", "fwd:", "fw:", "odp:", "pd:"):
+            if s.startswith(p):
+                s = s[len(p):].strip()
+                break
+        else:
+            return s
+
+
 @contextmanager
 def planner_projects(planner, projects):
     """Planer w wątku roboczym dostaje własne połączenie z bazą (SQLite jest jednowątkowe)."""
@@ -213,7 +228,7 @@ class Agent:
         self.audit.record("task_started", task_id=task["id"], kind=task["kind"])
         self._started[task["id"]] = time.monotonic()   # rzeczywisty czas pracy do ewidencji
         if payload.get("trusted") is True and (task["kind"] == "import" or (
-                task["kind"] == "email" and str(payload.get("subject", "")).strip().lower() == "diagnostyka")):
+                task["kind"] == "email" and _service_subject(payload) in SERVICE_SUBJECTS)):
             return None, payload, True
         project = self._project_for(task["kind"], payload)
         if project is not None:
@@ -276,9 +291,39 @@ class Agent:
         from .planner import PlannedAction
         if payload.get("data") is not None or "import" in str(payload.get("subject", "")).lower():
             body, subject = self._import_memory(payload.get("data")), "import pamięci"
+        elif _service_subject(payload) == "wiedza":
+            body, subject = self._import_knowledge(payload), "wiedza"
         else:
             body, subject = report(self.cfg, self.store), "diagnostyka"
         return [PlannedAction(guards.SEND_MAIL, {"to": payload["sender"], "subject": f"Re: {subject}", "body": body})]
+
+    def _import_knowledge(self, payload: dict) -> str:
+        """Załączniki maila „wiedza” od zespołu → baza wiedzy (bez modelu)."""
+        import shutil
+        from pathlib import Path
+        from .wiedza import KnowledgeBase, KnowledgeError
+        kb = KnowledgeBase(self.cfg.knowledge_dir)
+        staged = payload.get("staged")
+        src = Path(staged) if staged else None
+        if src is None or not src.is_dir() or src.parent != self.cfg.projects_dir.parent / "przychodzace":
+            return ("Brak załączników – nic nie dodałam. Pliki do bazy wiedzy wyślij jako załączniki maila "
+                    "o temacie „wiedza”.")
+        saved, failed = [], []
+        for f in sorted(src.iterdir()):
+            if f.is_file() and not f.is_symlink():
+                try:
+                    saved.append(kb.save(f.name, f.read_bytes()))
+                except KnowledgeError as e:
+                    failed.append(str(e))
+        shutil.rmtree(src, ignore_errors=True)
+        self.audit.record("wiedza_import", dodane=saved, pominiete=len(failed), sender=payload.get("sender"))
+        lines = []
+        if saved:
+            lines += ["Dodałam do bazy wiedzy:", *(f"- {n}" for n in saved)]
+        if failed:
+            lines += ["Pominięte:", *(f"- {e}" for e in failed)]
+        lines.append(f"Plików w bazie: {len(kb.entries())}.")
+        return "\n".join(lines)
 
     def _import_memory(self, data: str | None) -> str:
         if not data:
