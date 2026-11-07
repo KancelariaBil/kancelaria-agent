@@ -21,7 +21,8 @@ Aktualizuj ten plik przy każdej istotnej zmianie (PR). Ostatnia aktualizacja: 7
 
 - 7.11.2026: naprawiony błąd `'Projects' object has no attribute 'web'` – od 20.10 wywracał KAŻDE zlecenie
   (przy `workers>1`) jeszcze przed modelem, dlatego Monika milczała (bez maila „przerwało mi pracę”).
-- Maile z lukasz@brandwise.pl Monika uznaje za obce: brandwise.pl nie ma DKIM Google ani DMARC.
+- 7.11.2026: włączony DKIM Google dla brandwise.pl (rekord `google._domainkey` w MyDevil) – maile Łukasza
+  są zaufane. Test zlecenia (odsetki) przeszedł przez model – klucz API działa.
 
 ## Do zrobienia przy przekazaniu (odcięcie od Brandwise / Łukasza)
 - [ ] admin.google.com → Uwierzytelnianie e-maili → „Rozpocznij uwierzytelnianie” (DKIM) – bez tego
