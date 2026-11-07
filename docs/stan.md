@@ -1,11 +1,11 @@
 # Stan wdrożenia Moniki
 
-Aktualizuj ten plik przy każdej istotnej zmianie (PR). Ostatnia aktualizacja: 28.10.2026.
+Aktualizuj ten plik przy każdej istotnej zmianie (PR). Ostatnia aktualizacja: 7.11.2026.
 
 ## Działa
 - Serwer: OVH VPS-1 (2 vCore, 4 GB RAM), IP 54.39.231.254, Ubuntu 24.04, użytkownik `ubuntu`,
   katalog `~/kancelaria-agent`, usługa systemd `monika`, aktualizacja z `main` co 5 min (`monika-update.timer`).
-- Repo: GitHub `KancelariaBil/kancelaria-agent` (prywatne). Serwer pobiera kod kluczem tylko do odczytu
+- Repo: GitHub `KancelariaBil/kancelaria-agent` (publiczne – sprawdzone 3.11.2026; bez sekretów i danych spraw). Serwer pobiera kod kluczem tylko do odczytu
   (Deploy key „serwer”). Aplikacja Claude na GitHubie zainstalowana dla tego repo.
 - Skrzynka Moniki: biuro@kancelariabil.pl (Google Workspace kancelarii, tylko dla Moniki – nie podawać
   klientom). Logowanie OAuth: projekt Google Cloud „Monika poczta” (monika-poczta), ekran zgody
@@ -14,6 +14,10 @@ Aktualizuj ten plik przy każdej istotnej zmianie (PR). Ostatnia aktualizacja: 2
   dostęp na czas budowy i testów – decyzja Łukasza 28.10.2026). Monika pisze tylko do tych osób.
 - Tryb próbny wyłączony 20.10.2026 (decyzja Łukasza) – odpowiedzi wychodzą naprawdę, tylko do Basi.
 - DNS kancelariabil.pl: dodane rekordy `google._domainkey` (DKIM Google) i `_dmarc` (`v=DMARC1; p=none`).
+
+- 7.11.2026: serwer wyprowadzony z trybu Rescue (Boot = LOCAL). Hasło użytkownika `ubuntu` nieznane –
+  dostęp serwisowy bez SSH: po każdej aktualizacji z `main` skrypt `deploy/ops.sh` (root) wysyła raport
+  stanu mailem do autora projektu (`deploy/ops-report.py`, adresat musi być w `team`).
 
 ## Do zrobienia przy przekazaniu (odcięcie od Brandwise / Łukasza)
 - [ ] admin.google.com → Uwierzytelnianie e-maili → „Rozpocznij uwierzytelnianie” (DKIM) – bez tego
