@@ -8,9 +8,14 @@ sec() { echo; echo "===== $* ====="; }
 sec "czas, wersja kodu"
 date -u; uptime; git -c safe.directory="$DIR" log -1 --format='%h %ci %s' 2>&1
 sec "usługi"
-systemctl is-enabled monika monika-update.timer 2>&1
+systemctl is-enabled monika monika-update.timer monika-www 2>&1
 systemctl --no-pager status monika 2>&1 | head -n 15
 systemctl --no-pager list-timers monika-update.timer 2>&1 | head -n 4
+systemctl --no-pager status monika-www 2>&1 | head -n 8
+echo "panel lokalnie: $(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/zdrowie 2>&1)"
+command -v ufw >/dev/null && ufw status 2>&1 | head -n 3
+sec "journal monika-www (ostatnie 15)"
+journalctl -u monika-www -n 15 --no-pager 2>&1 | cut -c1-300
 sec "journal monika (ostatnie 80)"
 journalctl -u monika -n 80 --no-pager 2>&1 | cut -c1-400
 sec "journal monika-update (ostatnie 15)"

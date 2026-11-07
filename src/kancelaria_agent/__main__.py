@@ -107,6 +107,19 @@ def _templates_import(args) -> int:
     return 0
 
 
+def _www(args) -> int:
+    import json as _json
+    from .config import load_config
+    from .www import port_from_env, serve
+    cfg = load_config(Path(args.config) if args.config else None)
+
+    def log(event: str, **kw) -> None:   # do journala (audit.jsonl pisze tylko proces Moniki)
+        print(_json.dumps({"event": event, **kw}, ensure_ascii=False), flush=True)
+
+    serve(cfg.knowledge_dir, port=port_from_env(), log=log)
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="kancelaria_agent")
     ap.add_argument("--config", help="ścieżka do config.yaml (domyślnie: katalog projektu)")
@@ -119,6 +132,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("status", help="tryb, wyłącznik, liczba propozycji")
     sub.add_parser("sprawy", help="lista spraw (katalog, etap, zlecający)")
     sub.add_parser("wzory-import", help="import wzorów dokumentów z pliku ZIP").add_argument("zip")
+    sub.add_parser("www", help="panel WWW bazy wiedzy (usługa monika-www)")
     p = sub.add_parser("proposals", help="lista propozycji")
     p.add_argument("--all", action="store_true")
     for name in ("approve", "reject"):
@@ -131,6 +145,8 @@ def main(argv: list[str] | None = None) -> int:
         return _oauth_setup()
     if args.cmd == "wzory-import":
         return _templates_import(args)
+    if args.cmd == "www":
+        return _www(args)
 
     cfg, store, audit, integ = _build(args, with_demo=getattr(args, "demo_mail", False))
     try:
@@ -144,7 +160,8 @@ def main(argv: list[str] | None = None) -> int:
                 from .planner_agent import AgentPlanner
                 planner = AgentPlanner(owner, api_key=env.get("ANTHROPIC_API_KEY", "").strip(),
                                        model=env.get("ANTHROPIC_MODEL", "").strip() or None, audit=audit,
-                                       projects=projects, templates_dir=cfg.templates_dir, web=cfg.web_research)
+                                       projects=projects, templates_dir=cfg.templates_dir, web=cfg.web_research,
+                                       knowledge_dir=cfg.knowledge_dir)
             else:
                 planner = MockPlanner(owner_email=owner, client_replies=cfg.guardrails.client_replies)
             audit.record("planner", name=cfg.planner, detail=repr(planner))

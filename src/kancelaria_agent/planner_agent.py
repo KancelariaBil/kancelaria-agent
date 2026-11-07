@@ -114,11 +114,12 @@ def _allow(reason: str) -> dict:
 class AgentPlanner:
     def __init__(self, owner_email: str | None, api_key: str | None = None, model: str | None = None,
                  audit=None, projects=None, templates_dir: Path | None = None, web: bool = True,
-                 client_replies: bool = False):
+                 client_replies: bool = False, knowledge_dir: Path | None = None):
         self._projects = projects
         self._local = threading.local()
         self.owner_email = owner_email      # pierwsza osoba z zespołu: zgłoszenia o obcych mailach
         self.templates_dir = Path(templates_dir) if templates_dir else None
+        self.knowledge_dir = Path(knowledge_dir) if knowledge_dir else None
         self.web = web
         self.api_key = api_key or os.environ.get("ANTHROPIC_API_KEY", "")
         self.model = model or os.environ.get("ANTHROPIC_MODEL") or "claude-sonnet-5-5"
@@ -206,7 +207,40 @@ class AgentPlanner:
                 return err(ValueError("baza wzorów nie jest skonfigurowana"))
             return {"content": pt.read_template(self.templates_dir, args["sciezka"], args.get("od_znaku") or 0)}
 
-        tools = [interest, templates, template_read]
+        from .wiedza import KnowledgeBase, KnowledgeError
+
+        def kb() -> KnowledgeBase:
+            if self.knowledge_dir is None:
+                raise KnowledgeError("baza wiedzy nie jest skonfigurowana")
+            return KnowledgeBase(self.knowledge_dir)
+
+        @tool("wiedza_szukaj", "Przeszukaj bazę wiedzy kancelarii (procedury, stanowiska, notatki, orzecznictwo "
+              "zebrane przez zespół). Używaj przy KAŻDYM zleceniu merytorycznym, zanim sięgniesz do internetu. "
+              "Puste zapytanie = lista wszystkich plików.",
+              {"type": "object", "properties": {"zapytanie": {"type": "string"}}})
+        @guarded
+        def knowledge_search(args):
+            q = str(args.get("zapytanie") or "").strip()
+            if not q:
+                rows = kb().entries()
+                return ok("\n".join(f"{e.name} ({e.size // 1024} KB)" for e in rows) or "baza wiedzy jest pusta")
+            hits = kb().search(q)
+            self._log("wiedza_szukaj", project_id=project_id, trafienia=len(hits))
+            if not hits:
+                return ok(f"brak trafień dla: {q} (plików w bazie: {len(kb().entries())})")
+            return ok("\n\n".join(f"{h.name}\n" + "\n".join(f"  {s}" for s in h.snippets) for h in hits))
+
+        @tool("wiedza_czytaj", "Odczytaj plik z bazy wiedzy (nazwa z wiedza_szukaj). Długie: od_znaku.",
+              {"type": "object", "properties": {"plik": {"type": "string"}, "od_znaku": {"type": "integer"}},
+               "required": ["plik"]})
+        @guarded
+        def knowledge_read(args):
+            try:
+                return {"content": kb().read(args["plik"], args.get("od_znaku") or 0)}
+            except KnowledgeError as e:
+                return err(e)
+
+        tools = [interest, templates, template_read, knowledge_search, knowledge_read]
         if project_id is None or self.projects is None:
             return tools
 
