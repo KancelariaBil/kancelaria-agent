@@ -25,6 +25,9 @@ class IncomingMail:
     data: str | None = None   # treść załącznika JSON – tylko „import pamięci” od zweryfikowanego właściciela
     # Dokumenty z załączników (nazwa, bajty) – tylko od zweryfikowanego zespołu; zapisywane w sprawie.
     files: tuple[tuple[str, bytes], ...] = ()
+    # Adresaci (pełne „Imię <adres>”) – do rozpoznania oferty wysłanej klientowi z Moniką w DW.
+    to: tuple[str, ...] = ()
+    cc: tuple[str, ...] = ()
 
 
 class MailGateway(ABC):
@@ -64,3 +67,4 @@ class Integrations:
     board: TaskBoard
     invoices: InvoiceService
     name: str = field(default="mock")
+    panel: Any = None   # PanelGateway (integrations/panel.py) – oferty z DW do panelu kancelarii

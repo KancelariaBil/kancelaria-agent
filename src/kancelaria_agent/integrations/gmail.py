@@ -249,6 +249,16 @@ def _doc_files(msg) -> tuple[tuple[str, bytes], ...]:
     return tuple(out)
 
 
+def _recipients(msg, header: str) -> tuple[str, ...]:
+    """Adresaci z nagłówka (maks. 30) jako „Imię <adres>” albo sam adres."""
+    out = []
+    for name, addr in getaddresses([str(v) for v in (msg.get_all(header) or [])]):
+        addr = addr.strip().lower()
+        if valid_address(addr):
+            out.append(formataddr((" ".join(name.split())[:120], addr)) if name.strip() else addr)
+    return tuple(out[:30])
+
+
 def parse_message(raw: bytes, team, fallback_id: str) -> IncomingMail:
     msg = message_from_bytes(raw, policy=policy.default)
     sender = sender_address(msg)
@@ -287,6 +297,8 @@ def parse_message(raw: bytes, team, fallback_id: str) -> IncomingMail:
         reply_to=extract_client_reply_address(body) if is_owner else None,
         attachments=attachments,
         files=_doc_files(msg) if is_owner else (),
+        to=_recipients(msg, "To"),
+        cc=_recipients(msg, "Cc"),
     )
 
 
@@ -444,5 +456,8 @@ def build_gmail(dry_run: bool, env_file: Path | None = None, team: tuple[str, ..
     """Gmail prawdziwy; tablica zadań i faktury – mocki (kancelaria ich nie używa)."""
     from .mock import MockBoard, MockInvoices
 
+    from .panel import build_panel
+
     mail = GmailMail(GmailSettings.from_env(env_file, team), dry_run=dry_run)
-    return Integrations(mail=mail, board=MockBoard(), invoices=MockInvoices(), name="gmail")
+    env = {**read_env_file(env_file), **os.environ} if env_file else dict(os.environ)
+    return Integrations(mail=mail, board=MockBoard(), invoices=MockInvoices(), name="gmail", panel=build_panel(env))

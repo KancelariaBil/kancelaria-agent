@@ -1,6 +1,6 @@
 # Stan wdrożenia Moniki
 
-Aktualizuj ten plik przy każdej istotnej zmianie (PR). Ostatnia aktualizacja: 7.11.2026.
+Aktualizuj ten plik przy każdej istotnej zmianie (PR). Ostatnia aktualizacja: 19.11.2026.
 
 ## Działa
 - Serwer: OVH VPS-1 (2 vCore, 4 GB RAM), IP 54.39.231.254, Ubuntu 24.04, użytkownik `ubuntu`,
@@ -29,6 +29,13 @@ Aktualizuj ten plik przy każdej istotnej zmianie (PR). Ostatnia aktualizacja: 7
   albo panel WWW (usługa `monika-www`, port 80, http://monika.kancelariabil.pl).
   **Panel jest bez logowania (etap testów, decyzja Łukasza) – przed wgraniem prawdziwych dokumentów
   kancelarii trzeba dodać logowanie.**
+
+- 19.11.2026: oferty w DW → panel kancelarii (`oferty.py`, akcja `panel_offer`, `integrations/panel.py`).
+  Gdy osoba z zespołu wysyła ofertę klientowi z biuro@ w DW (nie w „Do”), Monika bez modelu odczytuje
+  tytuł, kwotę, formę, termin ważności i pierwszy załącznik PDF/Word i wpisuje je do panelu
+  (lokalne API `http://127.0.0.1:3000/api/monika/oferta`, klucz `PANEL_API_KEY` w `.env`). Nikt nie dostaje maila;
+  tylko gdy wpis się nie uda – informacja do nadawcy oferty. W panelu oferta czeka „do sprawdzenia”.
+  Numery rachunków w treści są maskowane. Inne maile w DW – bez zmian.
 
 ## Do zrobienia przy przekazaniu (odcięcie od Brandwise / Łukasza)
 - [ ] admin.google.com → Uwierzytelnianie e-maili → „Rozpocznij uwierzytelnianie” (DKIM) – bez tego
