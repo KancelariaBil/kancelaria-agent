@@ -18,6 +18,8 @@ WYROK = ("WYROK\nW IMIENIU RZECZYPOSPOLITEJ POLSKIEJ\nSąd Apelacyjny w Testowie
          "po rozpoznaniu sprawy z powództwa X przeciwko Y … Uzasadnienie: powód wniósł …")
 USTAWA = "USTAWA\nz dnia 1 stycznia 2026 r. o testowaniu\n" + "".join(f"Art. {i}. Treść przepisu {i}.\n" for i in range(1, 12))
 KOMENTARZ = ("Komentarz do art. 238 k.s.h., Nb. 12. Teza 3. Zob. też glosa do wyroku. Legalis 2026.")
+ARTYKUL = ("Jan Testowy, Opodatkowanie fundacji rodzinnej. Streszczenie: … Słowa kluczowe: fundacja rodzinna, CIT.\n"
+           "Przegląd Testowy 2026, nr 3, ISSN 1234-5678. Bibliografia: …")
 NOTATKA = "Notatka z narady: omówić z klientem termin spotkania."
 
 
@@ -26,11 +28,16 @@ NOTATKA = "Notatka z narady: omówić z klientem termin spotkania."
     ("dokument.txt", WYROK, "wyroki"),
     ("dokument.txt", USTAWA, "przepisy"),
     ("dokument.txt", KOMENTARZ, "komentarze"),
+    ("dokument.txt", ARTYKUL, "artykuly"),
     ("dokument.txt", NOTATKA, "inne"),
+    ("Monografia fundacja rodzinna.pdf", "", "artykuly"),
+    ("artykul MP 2026.pdf", "", "artykuly"),
     ("Ordynacja-podatkowa.pdf", "", "przepisy"),
     ("wyrok NSA II FSK 1.pdf", "", "wyroki"),
     ("Komentarz KSH art 299.pdf", "", "komentarze"),
     ("interpretacja VAT.pdf", "", "interpretacje"),
+    ("art-299-ksh.pdf", "", "komentarze"),
+    ("Art. 201 KSH – zarząd spółki.docx", "", "komentarze"),
 ])
 def test_classify(name, text, cat):
     assert classify(name, text) == cat
@@ -39,6 +46,7 @@ def test_classify(name, text, cat):
 def test_category_words():
     assert category_from_word("Wyroki") == "wyroki"
     assert category_from_word("komentarz") == "komentarze"
+    assert category_from_word("artykuły") == "artykuly" and category_from_word("Książki") == "artykuly"
     assert category_from_word("auto") is None and category_from_word("") is None
     assert category_from_word("cokolwiek") is None
 
@@ -87,7 +95,7 @@ def test_broken_docx_does_not_break_search(tmp_path):
 
 
 @pytest.mark.parametrize("subject,expected", [
-    ("wiedza", (True, None)), ("wiedza wyroki", (True, "wyroki")), ("Re: Wiedza Komentarz", (True, "komentarze")),
+    ("wiedza", (True, None)), ("wiedza wyroki", (True, "wyroki")), ("wiedza książki", (True, "artykuly")), ("Re: Wiedza Komentarz", (True, "komentarze")),
     ("wiedza o spółkach", (False, None)), ("wiedza cokolwiek", (False, None)), ("umowa", (False, None)),
 ])
 def test_knowledge_subject(subject, expected):
@@ -143,3 +151,19 @@ def test_mail_and_panel_report_duplicates(make_env, panel):  # noqa: F811
     body, ctype = _multipart([("inna-nazwa.txt", NOTATKA.encode())])
     r = _post(url + "/dodaj", body, ctype)
     assert "już jest w bazie" in urllib.parse.unquote(r.headers["Location"]) and len(kb.entries()) == 1
+
+
+def test_panel_bulk_move(panel):  # noqa: F811
+    kb, url = panel
+    kb.save("a.txt", b"Pierwsza notatka testowa.")
+    kb.save("b.txt", b"Druga notatka testowa, inna.")
+    kb.save("c.txt", b"Trzecia notatka testowa, jeszcze inna.")
+    page = urllib.request.urlopen(url + "/").read().decode()
+    assert 'action="/przenies-zbiorczo"' in page and 'name="kat:a.txt"' in page
+    form = (b"kat:a.txt=wyroki&kat:b.txt=inne&kat:c.txt=inne"            # a – zmiana w wierszu
+            b"&zaznacz=b.txt&zaznacz=c.txt&kategoria=artykuly")           # b, c – zaznaczone
+    r = _post(url + "/przenies-zbiorczo", form, "application/x-www-form-urlencoded")
+    assert r.status == 303 and "Przeniesiono 3" in urllib.parse.unquote(r.headers["Location"])
+    assert {e.name for e in kb.entries()} == {"wyroki/a.txt", "artykuly/b.txt", "artykuly/c.txt"}
+    r = _post(url + "/przenies-zbiorczo", b"kat:wyroki/a.txt=wyroki", "application/x-www-form-urlencoded")
+    assert "Nic do przeniesienia" in urllib.parse.unquote(r.headers["Location"])

@@ -112,16 +112,18 @@ o temacie „wiedza” na adres Moniki</span><div id="wybrane" class="note"></di
 <p class="row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><label>Kategoria:
 <select name="kategoria"><option value="auto">rozpoznaj automatycznie</option>{opts}</select></label>
 <button>Dodaj do bazy</button></p>
-<p class="note">Mailem: temat „wiedza wyroki”, „wiedza interpretacje”, „wiedza przepisy”, „wiedza komentarze”
-(sam „wiedza” = rozpoznanie automatyczne).</p></form></section>""")
+<p class="note">Mailem: temat „wiedza wyroki”, „wiedza interpretacje”, „wiedza przepisy”, „wiedza komentarze”,
+„wiedza artykuły” (sam „wiedza” = rozpoznanie automatyczne).</p></form></section>""")
     move_opts = lambda cur: "".join(   # noqa: E731
         f'<option value="{k}"{" selected" if k == cur else ""}>{html.escape(v)}</option>' for k, v in ALL_CATEGORIES.items())
     rows = "".join(
-        f'<tr><td>{_cat_label(e.category)}<a href="/plik/{quote(e.name)}">{html.escape(e.filename)}</a></td>'
+        f'<tr><td><input type="checkbox" form="zbiorczo" name="zaznacz" value="{html.escape(e.name)}" '
+        f'aria-label="Zaznacz {html.escape(e.filename)}"> '
+        f'{_cat_label(e.category)}<a href="/plik/{quote(e.name)}">{html.escape(e.filename)}</a></td>'
         f'<td class="num">{_size(e.size)}</td>'
         f'<td class="num hide">{time.strftime("%d.%m.%Y %H:%M", time.localtime(e.mtime))}</td>'
-        f'<td><form class="inline" method="post" action="/przenies"><input type="hidden" name="plik" value="{html.escape(e.name)}">'
-        f'<select name="kategoria" aria-label="Kategoria">{move_opts(e.category)}</select><button>przenieś</button></form></td>'
+        f'<td><select form="zbiorczo" name="kat:{html.escape(e.name)}" data-cur="{e.category}" aria-label="Kategoria">'
+        f'{move_opts(e.category)}</select></td>'
         f'<td><form method="post" action="/usun" onsubmit="return confirm(\'Usunąć {html.escape(e.name)}?\')">'
         f'<input type="hidden" name="plik" value="{html.escape(e.name)}"><button class="link">usuń</button></form></td></tr>'
         for e in entries)
@@ -130,10 +132,29 @@ o temacie „wiedza” na adres Moniki</span><div id="wybrane" class="note"></di
         for k, v in ALL_CATEGORIES.items())
     sort_btn = ('<form method="post" action="/porzadkuj" style="margin:0 0 12px"><button>Uporządkuj pliki z „Inne”</button>'
                 ' <span class="note">przenosi do kategorii pliki, które da się rozpoznać</span></form>') if counts[OTHER] else ""
+    bulk = ('<form id="zbiorczo" method="post" action="/przenies-zbiorczo" class="bulk">'
+            '<button id="zapisz">Przenieś zmienione i zaznaczone</button> '
+            '<label>zaznaczone do: <select name="kategoria"><option value="">— bez zmiany —</option>'
+            + move_opts(None) + '</select></label>'
+            ' <span class="note">zmień kategorię w wierszach albo zaznacz pliki – jeden przycisk przenosi wszystko</span>'
+            '</form>')
     parts.append(f"""<section class="card"><h2>Pliki w bazie</h2><nav class="tabs">{tabs}</nav>{sort_btn}
-{'<table><tr><th>Plik</th><th>Rozmiar</th><th class="hide">Dodano</th><th>Kategoria</th><th></th></tr>' + rows + '</table>'
+{bulk + '<table><tr><th><input type="checkbox" id="wszystkie" aria-label="Zaznacz wszystkie"> Plik</th>'
+ '<th>Rozmiar</th><th class="hide">Dodano</th><th>Kategoria</th><th></th></tr>' + rows + '</table>' + BULK_JS
  if entries else '<p class="empty">Brak plików.</p>'}</section>""")
     return _page("".join(parts), msg, bad)
+
+
+BULK_JS = """<script>
+(function(){var b=document.getElementById('zapisz'),f=document.getElementById('zbiorczo');
+function n(){var c=0;document.querySelectorAll('select[data-cur]').forEach(function(s){var ch=s.value!==s.dataset.cur;
+s.closest('tr').classList.toggle('zmiana',ch);if(ch)c++;});
+var z=document.querySelectorAll('input[name=zaznacz]:checked').length,t=f.querySelector('select[name=kategoria]').value;
+b.textContent='Przenieś '+(c+(t?z:0))+' plików';}
+document.addEventListener('change',n);var a=document.getElementById('wszystkie');
+if(a)a.addEventListener('change',function(){document.querySelectorAll('input[name=zaznacz]').forEach(function(x){x.checked=a.checked});n();});n();})();
+</script><style>.bulk{position:sticky;top:0;background:#fff;padding:8px 0;z-index:2;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+tr.zmiana td{background:#fff7d6}</style>"""
 
 
 def parse_form(content_type: str, body: bytes) -> tuple[list[tuple[str, bytes]], dict[str, str]]:
@@ -248,6 +269,33 @@ def make_handler(kb: KnowledgeBase, log=None):
                 if log:
                     log("wiedza_panel_przenies", plik=name, nowa=new)
                 return self._redirect(f"Przeniesiono: {name.rsplit('/', 1)[-1]} → {ALL_CATEGORIES[k]}.")
+            if url.path == "/przenies-zbiorczo":
+                form = parse_qs(body.decode("utf-8", "replace"))
+                plan: dict[str, str] = {}
+                for key, vals in form.items():
+                    if key.startswith("kat:"):
+                        name = key[4:]
+                        cur = name.split("/", 1)[0] if "/" in name else OTHER
+                        if vals[0] != cur:
+                            plan[name] = vals[0]
+                target = (form.get("kategoria") or [""])[0]
+                if target:
+                    for name in form.get("zaznacz", []):
+                        plan[name] = target
+                moved, errors = [], []
+                for name, k in plan.items():
+                    try:
+                        if (name.split("/", 1)[0] if "/" in name else OTHER) != k:
+                            moved.append(kb.move(name, k))
+                    except KnowledgeError as e:
+                        errors.append(str(e))
+                if log:
+                    log("wiedza_panel_przenies_zbiorczo", przeniesione=moved, bledy=len(errors))
+                if not moved and not errors:
+                    return self._redirect("Nic do przeniesienia – zmień kategorię w wierszach albo zaznacz pliki "
+                                          "i wybierz „zaznaczone do”.", True)
+                msg = f"Przeniesiono {len(moved)} plików." + (f" Błędy: {'; '.join(errors)}" if errors else "")
+                return self._redirect(msg, bool(errors) and not moved)
             if url.path == "/porzadkuj":
                 moved = kb.sort_other()
                 if log:

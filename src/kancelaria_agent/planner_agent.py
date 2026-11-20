@@ -216,17 +216,17 @@ class AgentPlanner:
 
         @tool("wiedza_szukaj", "Przeszukaj bazę wiedzy kancelarii (procedury, stanowiska, notatki, orzecznictwo "
               "zebrane przez zespół). Używaj przy KAŻDYM zleceniu merytorycznym, zanim sięgniesz do internetu. "
-              "Kategorie: interpretacje (podatkowe), wyroki, przepisy (ustawy), komentarze, inne – opcjonalnie "
+              "Kategorie: interpretacje (podatkowe), wyroki, przepisy (ustawy), komentarze, artykuly (artykuły i książki), inne – opcjonalnie "
               "zawęź wyszukiwanie polem kategoria. Puste zapytanie = lista plików.",
               {"type": "object", "properties": {"zapytanie": {"type": "string"},
                                                 "kategoria": {"type": "string",
                                                               "enum": ["interpretacje", "wyroki", "przepisy",
-                                                                       "komentarze", "inne"]}}})
+                                                                       "komentarze", "artykuly", "inne"]}}})
         @guarded
         def knowledge_search(args):
             q = str(args.get("zapytanie") or "").strip()
             cat = args.get("kategoria") or None
-            if cat not in (None, "interpretacje", "wyroki", "przepisy", "komentarze", "inne"):
+            if cat not in (None, "interpretacje", "wyroki", "przepisy", "komentarze", "artykuly", "inne"):
                 cat = None
             if not q:
                 rows = kb().entries(cat)
