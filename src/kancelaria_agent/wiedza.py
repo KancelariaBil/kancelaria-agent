@@ -124,6 +124,8 @@ def classify(filename: str, text: str) -> str:
     score["komentarze"] += 4 * bool(re.search(r"\bglosa\b", t))
     score["komentarze"] += 2 * bool(re.search(r"\bnb\.? ?\d+", t))
     score["komentarze"] += 3 * bool(re.search(r"legalis|lex/el|wolters kluwer|c\.? ?h\.? ?beck", t))
+    # zasada kancelarii: „art.” + „KSH” w nazwie pliku = komentarz do KSH (np. art-194-ksh-red-jara-2025.pdf)
+    if re.search(r"\bart\b", n) and re.search(r"\bk\.? ?s\.? ?h\b", n): score["komentarze"] += 12
     # artykuły i książki (publikacje naukowe, czasopisma, monografie)
     if re.search(r"artykul|ksiazk|monografi|publikacj|czasopism|przeglad podatkowy|monitor podatkowy", n):
         score["artykuly"] += 6
