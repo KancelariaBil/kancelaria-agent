@@ -36,6 +36,20 @@ def _service_subject(payload: dict) -> str:
             return s
 
 
+def _knowledge_subject(payload: dict) -> tuple[bool, str | None]:
+    """Temat „wiedza” albo „wiedza <kategoria>” (np. „wiedza wyroki”) → (czy to import wiedzy, kategoria)."""
+    from .wiedza import category_from_word
+    s = _service_subject(payload)
+    if s == "wiedza":
+        return True, None
+    head, _, rest = s.partition(" ")
+    if head == "wiedza" and rest.strip() and " " not in rest.strip():
+        cat = category_from_word(rest.strip())
+        if cat:
+            return True, cat
+    return False, None
+
+
 @contextmanager
 def planner_projects(planner, projects):
     """Planer w wątku roboczym dostaje własne połączenie z bazą (SQLite jest jednowątkowe)."""
@@ -228,7 +242,8 @@ class Agent:
         self.audit.record("task_started", task_id=task["id"], kind=task["kind"])
         self._started[task["id"]] = time.monotonic()   # rzeczywisty czas pracy do ewidencji
         if payload.get("trusted") is True and (task["kind"] == "import" or (
-                task["kind"] == "email" and _service_subject(payload) in SERVICE_SUBJECTS)):
+                task["kind"] == "email" and (_service_subject(payload) in SERVICE_SUBJECTS
+                                             or _knowledge_subject(payload)[0]))):
             return None, payload, True
         project = self._project_for(task["kind"], payload)
         if project is not None:
@@ -291,7 +306,7 @@ class Agent:
         from .planner import PlannedAction
         if payload.get("data") is not None or "import" in str(payload.get("subject", "")).lower():
             body, subject = self._import_memory(payload.get("data")), "import pamięci"
-        elif _service_subject(payload) == "wiedza":
+        elif _knowledge_subject(payload)[0]:
             body, subject = self._import_knowledge(payload), "wiedza"
         else:
             body, subject = report(self.cfg, self.store), "diagnostyka"
@@ -301,25 +316,35 @@ class Agent:
         """Załączniki maila „wiedza” od zespołu → baza wiedzy (bez modelu)."""
         import shutil
         from pathlib import Path
-        from .wiedza import KnowledgeBase, KnowledgeError
+        from .wiedza import ALL_CATEGORIES, KnowledgeBase, KnowledgeError
         kb = KnowledgeBase(self.cfg.knowledge_dir)
+        forced = _knowledge_subject(payload)[1]
         staged = payload.get("staged")
         src = Path(staged) if staged else None
         if src is None or not src.is_dir() or src.parent != self.cfg.projects_dir.parent / "przychodzace":
             return ("Brak załączników – nic nie dodałam. Pliki do bazy wiedzy wyślij jako załączniki maila "
                     "o temacie „wiedza”.")
-        saved, failed = [], []
+        saved, failed, dups = [], [], []
         for f in sorted(src.iterdir()):
             if f.is_file() and not f.is_symlink():
                 try:
-                    saved.append(kb.save(f.name, f.read_bytes()))
+                    name, dup = kb.save_report(f.name, f.read_bytes(), forced)
+                    (dups if dup else saved).append(name if not dup else f"{f.name} – już jest jako {name}")
                 except KnowledgeError as e:
                     failed.append(str(e))
         shutil.rmtree(src, ignore_errors=True)
         self.audit.record("wiedza_import", dodane=saved, pominiete=len(failed), sender=payload.get("sender"))
         lines = []
         if saved:
-            lines += ["Dodałam do bazy wiedzy:", *(f"- {n}" for n in saved)]
+            def label(n: str) -> str:
+                cat = n.split("/", 1)[0] if "/" in n else "inne"
+                return f"- {n.rsplit('/', 1)[-1]} → {ALL_CATEGORIES.get(cat, cat)}"
+            lines += ["Dodałam do bazy wiedzy:", *(label(n) for n in saved)]
+            if not forced:
+                lines.append("Kategorie rozpoznałam z nazwy i treści. Żeby wskazać kategorię, napisz w temacie np. "
+                             "„wiedza wyroki”, „wiedza interpretacje”, „wiedza przepisy”, „wiedza komentarze”.")
+        if dups:
+            lines += ["Nie dodałam – ten sam dokument już jest w bazie:", *(f"- {d}" for d in dups)]
         if failed:
             lines += ["Pominięte:", *(f"- {e}" for e in failed)]
         lines.append(f"Plików w bazie: {len(kb.entries())}.")
