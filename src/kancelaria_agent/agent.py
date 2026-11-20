@@ -342,7 +342,7 @@ class Agent:
             lines += ["Dodałam do bazy wiedzy:", *(label(n) for n in saved)]
             if not forced:
                 lines.append("Kategorie rozpoznałam z nazwy i treści. Żeby wskazać kategorię, napisz w temacie np. "
-                             "„wiedza wyroki”, „wiedza interpretacje”, „wiedza przepisy”, „wiedza komentarze”, „wiedza artykuły”.")
+                             "„wiedza wyroki”, „wiedza interpretacje”, „wiedza przepisy”, „wiedza komentarze”, „wiedza artykuły”, „wiedza wzory”.")
         if dups:
             lines += ["Nie dodałam – ten sam dokument już jest w bazie:", *(f"- {d}" for d in dups)]
         if failed:

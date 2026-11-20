@@ -20,6 +20,8 @@ USTAWA = "USTAWA\nz dnia 1 stycznia 2026 r. o testowaniu\n" + "".join(f"Art. {i}
 KOMENTARZ = ("Komentarz do art. 238 k.s.h., Nb. 12. Teza 3. Zob. też glosa do wyroku. Legalis 2026.")
 ARTYKUL = ("Jan Testowy, Opodatkowanie fundacji rodzinnej. Streszczenie: … Słowa kluczowe: fundacja rodzinna, CIT.\n"
            "Przegląd Testowy 2026, nr 3, ISSN 1234-5678. Bibliografia: …")
+WZOR = ("UMOWA POŻYCZKI\nzawarta w dniu ………… w ………… pomiędzy:\n[imię i nazwisko] zamieszkałym …………, "
+        "a [nazwa spółki] z siedzibą …………\nKwota pożyczki: ………… zł\n\n(miejscowość, data)            (podpis)")
 NOTATKA = "Notatka z narady: omówić z klientem termin spotkania."
 
 
@@ -30,6 +32,10 @@ NOTATKA = "Notatka z narady: omówić z klientem termin spotkania."
     ("dokument.txt", KOMENTARZ, "komentarze"),
     ("dokument.txt", ARTYKUL, "artykuly"),
     ("dokument.txt", NOTATKA, "inne"),
+    ("dokument.docx", WZOR, "wzory"),
+    ("Wzór pełnomocnictwa.docx", "", "wzory"),
+    ("szablon wezwania do zaplaty.docx", "", "wzory"),
+    ("Wzór pozwu – wyrok zaoczny.docx", "", "wzory"),
     ("Monografia fundacja rodzinna.pdf", "", "artykuly"),
     ("artykul MP 2026.pdf", "", "artykuly"),
     ("Ordynacja-podatkowa.pdf", "", "przepisy"),
@@ -47,6 +53,7 @@ def test_category_words():
     assert category_from_word("Wyroki") == "wyroki"
     assert category_from_word("komentarz") == "komentarze"
     assert category_from_word("artykuły") == "artykuly" and category_from_word("Książki") == "artykuly"
+    assert category_from_word("wzory") == "wzory" and category_from_word("Szablony") == "wzory" and category_from_word("wzór") == "wzory"
     assert category_from_word("auto") is None and category_from_word("") is None
     assert category_from_word("cokolwiek") is None
 
@@ -95,7 +102,7 @@ def test_broken_docx_does_not_break_search(tmp_path):
 
 
 @pytest.mark.parametrize("subject,expected", [
-    ("wiedza", (True, None)), ("wiedza wyroki", (True, "wyroki")), ("wiedza książki", (True, "artykuly")), ("Re: Wiedza Komentarz", (True, "komentarze")),
+    ("wiedza", (True, None)), ("wiedza wyroki", (True, "wyroki")), ("wiedza książki", (True, "artykuly")), ("wiedza wzory", (True, "wzory")), ("Re: Wiedza Komentarz", (True, "komentarze")),
     ("wiedza o spółkach", (False, None)), ("wiedza cokolwiek", (False, None)), ("umowa", (False, None)),
 ])
 def test_knowledge_subject(subject, expected):
