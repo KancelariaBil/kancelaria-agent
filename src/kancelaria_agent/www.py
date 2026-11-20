@@ -112,8 +112,8 @@ o temacie „wiedza” na adres Moniki</span><div id="wybrane" class="note"></di
 <p class="row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><label>Kategoria:
 <select name="kategoria"><option value="auto">rozpoznaj automatycznie</option>{opts}</select></label>
 <button>Dodaj do bazy</button></p>
-<p class="note">Mailem: temat „wiedza wyroki”, „wiedza interpretacje”, „wiedza przepisy”, „wiedza komentarze”
-(sam „wiedza” = rozpoznanie automatyczne).</p></form></section>""")
+<p class="note">Mailem: temat „wiedza wyroki”, „wiedza interpretacje”, „wiedza przepisy”, „wiedza komentarze”,
+„wiedza artykuły” (sam „wiedza” = rozpoznanie automatyczne).</p></form></section>""")
     move_opts = lambda cur: "".join(   # noqa: E731
         f'<option value="{k}"{" selected" if k == cur else ""}>{html.escape(v)}</option>' for k, v in ALL_CATEGORIES.items())
     rows = "".join(

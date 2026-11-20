@@ -1,7 +1,8 @@
 """Baza wiedzy Moniki: pliki kancelarii (procedury, stanowiska, notatki, orzecznictwo), które Monika
 przeszukuje i czyta przy każdym zleceniu.
 
-- katalog domyślnie data/wiedza z podkatalogami kategorii: interpretacje/, wyroki/, przepisy/, komentarze/;
+- katalog domyślnie data/wiedza z podkatalogami kategorii: interpretacje/, wyroki/, przepisy/, komentarze/,
+  artykuly/ (artykuły i książki);
   pliki bez rozpoznanej kategorii leżą w katalogu głównym („inne”). Nowy plik trafia do kategorii wskazanej
   przez człowieka (panel, temat maila „wiedza wyroki”) albo rozpoznanej z nazwy i treści (classify),
 - tekst wyciągany raz i trzymany w ukrytym podkatalogu .tekst/ (odświeżany po zmianie pliku),
@@ -31,6 +32,7 @@ CATEGORIES = {
     "wyroki": "Wyroki i orzecznictwo",
     "przepisy": "Przepisy ustaw",
     "komentarze": "Komentarze",
+    "artykuly": "Artykuły i książki",
 }
 OTHER = "inne"
 ALL_CATEGORIES = {**CATEGORIES, OTHER: "Inne"}
@@ -40,6 +42,8 @@ CATEGORY_WORDS = {
     "wyroki": "wyroki", "wyrok": "wyroki", "orzeczenia": "wyroki", "orzecznictwo": "wyroki", "orzeczenie": "wyroki",
     "przepisy": "przepisy", "przepis": "przepisy", "ustawy": "przepisy", "ustawa": "przepisy",
     "komentarze": "komentarze", "komentarz": "komentarze", "glosa": "komentarze", "glosy": "komentarze",
+    "artykuly": "artykuly", "artykul": "artykuly", "ksiazki": "artykuly", "ksiazka": "artykuly",
+    "publikacje": "artykuly", "publikacja": "artykuly", "monografia": "artykuly", "monografie": "artykuly",
     "inne": OTHER,
 }
 
@@ -120,6 +124,13 @@ def classify(filename: str, text: str) -> str:
     score["komentarze"] += 4 * bool(re.search(r"\bglosa\b", t))
     score["komentarze"] += 2 * bool(re.search(r"\bnb\.? ?\d+", t))
     score["komentarze"] += 3 * bool(re.search(r"legalis|lex/el|wolters kluwer|c\.? ?h\.? ?beck", t))
+    # artykuły i książki (publikacje naukowe, czasopisma, monografie)
+    if re.search(r"artykul|ksiazk|monografi|publikacj|czasopism|przeglad podatkowy|monitor podatkowy", n):
+        score["artykuly"] += 6
+    score["artykuly"] += 5 * bool(re.search(r"\bisbn\b|\bissn\b|\bdoi:? ?10\.", t))
+    score["artykuly"] += 3 * bool(re.search(r"slowa kluczowe|keywords|streszczenie|abstract", t))
+    score["artykuly"] += 2 * bool(re.search(r"\bbibliografia\b|\bliteratura\b|\bspis tresci\b", t))
+    score["artykuly"] += 2 * bool(re.search(r"\bwydawnictwo\b|\bwydanie [ivx0-9]", t))
     best = max(score, key=lambda k: score[k])
     ordered = sorted(score.values(), reverse=True)
     if score[best] < 5 or ordered[0] - ordered[1] < 2:
