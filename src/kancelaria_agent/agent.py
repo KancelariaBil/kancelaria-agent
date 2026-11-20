@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import imaplib
 import json
 import os
 import signal
+import ssl
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -37,6 +39,20 @@ def _service_subject(payload: dict) -> str:
             return s
 
 
+def _knowledge_subject(payload: dict) -> tuple[bool, str | None]:
+    """Temat „wiedza” albo „wiedza <kategoria>” (np. „wiedza wyroki”) → (czy to import wiedzy, kategoria)."""
+    from .wiedza import category_from_word
+    s = _service_subject(payload)
+    if s == "wiedza":
+        return True, None
+    head, _, rest = s.partition(" ")
+    if head == "wiedza" and rest.strip() and " " not in rest.strip():
+        cat = category_from_word(rest.strip())
+        if cat:
+            return True, cat
+    return False, None
+
+
 @contextmanager
 def planner_projects(planner, projects):
     """Planer w wątku roboczym dostaje własne połączenie z bazą (SQLite jest jednowątkowe)."""
@@ -65,15 +81,33 @@ class Agent:
         self._running: dict = {}
         self._deferred: set[int] = set()
         self._started: dict[int, float] = {}
+        self._mail_pause_until = 0.0   # po błędzie skrzynki (np. limit Gmaila) – przerwa zamiast pętli restartów
+        self._fetched: set[str] = set()   # maile (bez importu) już pobrane – nie ściągamy ich treści co 30 s
         self._pool = ThreadPoolExecutor(max_workers=self.workers, thread_name_prefix="monika") \
             if self.workers > 1 else None
 
+    def _already_received(self, message_id: str) -> bool:
+        # Zwykły mail: pobrany już w tym uruchomieniu (po restarcie pobierze się raz – może nieść import pamięci).
+        return message_id in self._fetched or self.store.seen_ref(f"import:{message_id}")
+
     def ingest_mail(self) -> int:
         n = 0
-        mails = self.integrations.mail.fetch_unread()
+        if time.time() < self._mail_pause_until:
+            return 0
+        try:
+            mails = self.integrations.mail.fetch_unread(skip=self._already_received)
+        except (imaplib.IMAP4.error, OSError, ssl.SSLError) as e:
+            # Błąd skrzynki nie może wywracać Moniki (restart co kilka sekund tylko pogłębia blokadę Gmaila).
+            limit = "OVERQUOTA" in str(e) or "bandwidth" in str(e).lower()
+            pause = 15 * 60 if limit else 60
+            self._mail_pause_until = time.time() + pause
+            self.audit.record("mail_fetch_error", error=str(e)[:300], pause_s=pause, limit=limit)
+            return 0
         for info in getattr(self.integrations.mail, "unreadable", None) or []:
             self.audit.record("mail_unreadable", info=info)
         for mail in mails:
+            if not mail.data:
+                self._fetched.add(mail.message_id)
             payload = {"message_id": mail.message_id, "sender": mail.sender,
                        "subject": mail.subject, "body": mail.body, "trusted": mail.trusted,
                        "reply_to": mail.reply_to, "attachments": list(mail.attachments),
@@ -259,7 +293,8 @@ class Agent:
         self.audit.record("task_started", task_id=task["id"], kind=task["kind"])
         self._started[task["id"]] = time.monotonic()   # rzeczywisty czas pracy do ewidencji
         if payload.get("trusted") is True and (task["kind"] == "import" or (
-                task["kind"] == "email" and _service_subject(payload) in SERVICE_SUBJECTS)):
+                task["kind"] == "email" and (_service_subject(payload) in SERVICE_SUBJECTS
+                                             or _knowledge_subject(payload)[0]))):
             return None, payload, True
         if task["kind"] == "email" and oferty.is_dw_offer(payload, self.agent_email, self.team):
             payload["_offer"] = True
@@ -329,7 +364,7 @@ class Agent:
             return self._offer_actions(payload)
         if payload.get("data") is not None or "import" in str(payload.get("subject", "")).lower():
             body, subject = self._import_memory(payload.get("data")), "import pamięci"
-        elif _service_subject(payload) == "wiedza":
+        elif _knowledge_subject(payload)[0]:
             body, subject = self._import_knowledge(payload), "wiedza"
         else:
             body, subject = report(self.cfg, self.store), "diagnostyka"
@@ -339,25 +374,35 @@ class Agent:
         """Załączniki maila „wiedza” od zespołu → baza wiedzy (bez modelu)."""
         import shutil
         from pathlib import Path
-        from .wiedza import KnowledgeBase, KnowledgeError
+        from .wiedza import ALL_CATEGORIES, KnowledgeBase, KnowledgeError
         kb = KnowledgeBase(self.cfg.knowledge_dir)
+        forced = _knowledge_subject(payload)[1]
         staged = payload.get("staged")
         src = Path(staged) if staged else None
         if src is None or not src.is_dir() or src.parent != self.cfg.projects_dir.parent / "przychodzace":
             return ("Brak załączników – nic nie dodałam. Pliki do bazy wiedzy wyślij jako załączniki maila "
                     "o temacie „wiedza”.")
-        saved, failed = [], []
+        saved, failed, dups = [], [], []
         for f in sorted(src.iterdir()):
             if f.is_file() and not f.is_symlink():
                 try:
-                    saved.append(kb.save(f.name, f.read_bytes()))
+                    name, dup = kb.save_report(f.name, f.read_bytes(), forced)
+                    (dups if dup else saved).append(name if not dup else f"{f.name} – już jest jako {name}")
                 except KnowledgeError as e:
                     failed.append(str(e))
         shutil.rmtree(src, ignore_errors=True)
         self.audit.record("wiedza_import", dodane=saved, pominiete=len(failed), sender=payload.get("sender"))
         lines = []
         if saved:
-            lines += ["Dodałam do bazy wiedzy:", *(f"- {n}" for n in saved)]
+            def label(n: str) -> str:
+                cat = n.split("/", 1)[0] if "/" in n else "inne"
+                return f"- {n.rsplit('/', 1)[-1]} → {ALL_CATEGORIES.get(cat, cat)}"
+            lines += ["Dodałam do bazy wiedzy:", *(label(n) for n in saved)]
+            if not forced:
+                lines.append("Kategorie rozpoznałam z nazwy i treści. Żeby wskazać kategorię, napisz w temacie np. "
+                             "„wiedza wyroki”, „wiedza interpretacje”, „wiedza przepisy”, „wiedza komentarze”, „wiedza artykuły”, „wiedza wzory”.")
+        if dups:
+            lines += ["Nie dodałam – ten sam dokument już jest w bazie:", *(f"- {d}" for d in dups)]
         if failed:
             lines += ["Pominięte:", *(f"- {e}" for e in failed)]
         lines.append(f"Plików w bazie: {len(kb.entries())}.")

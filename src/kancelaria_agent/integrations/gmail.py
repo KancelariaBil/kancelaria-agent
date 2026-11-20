@@ -336,8 +336,13 @@ class GmailMail(MailGateway):
             conn.authenticate("XOAUTH2", lambda _: payload)
         return conn
 
-    def fetch_unread(self) -> list[IncomingMail]:
-        """Nieprzeczytane z INBOX (BODY.PEEK – nie zmienia flag). Deduplikację robi kolejka zadań."""
+    def fetch_unread(self, skip=None) -> list[IncomingMail]:
+        """Nieprzeczytane z INBOX (BODY.PEEK – nie zmienia flag).
+
+        Skrzynka zostaje nieprzeczytana, więc te same maile wracają przy każdym sprawdzeniu poczty. Żeby nie ściągać
+        co 30 s całych wiadomości z załącznikami (Gmail blokuje wtedy IMAP: „OVERQUOTA … bandwidth limits”), najpierw
+        pobieramy sam nagłówek Message-ID; treść tylko wtedy, gdy skip(message_id) mówi, że to nowa wiadomość.
+        """
         conn = self._imap()
         try:
             conn.select("INBOX", readonly=True)
@@ -349,6 +354,8 @@ class GmailMail(MailGateway):
             ids = data[0].split()[-MAX_FETCH:]
             mails, self.unreadable = [], []
             for uid in ids:
+                if skip is not None and skip(self._message_id(conn, uid) or f"imap-uid-{uid.decode()}"):
+                    continue
                 typ, parts = conn.uid("FETCH", uid, "(BODY.PEEK[])")
                 raw = parts[0][1] if typ == "OK" and parts and isinstance(parts[0], tuple) else b""
                 mail = parse_message(raw, self.s.team, fallback_id=f"imap-uid-{uid.decode()}") if raw else None
@@ -359,6 +366,15 @@ class GmailMail(MailGateway):
             return mails
         finally:
             _quiet_logout(conn)
+
+    @staticmethod
+    def _message_id(conn: imaplib.IMAP4_SSL, uid: bytes) -> str:
+        """Sam nagłówek Message-ID (kilkadziesiąt bajtów zamiast całej wiadomości)."""
+        typ, parts = conn.uid("FETCH", uid, "(BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])")
+        if typ != "OK" or not parts or not isinstance(parts[0], tuple):
+            return ""
+        head = message_from_bytes(parts[0][1] or b"", policy=policy.default)
+        return str(head.get("Message-ID") or "").strip()
 
     def drafts_folder(self, conn: imaplib.IMAP4_SSL) -> str:
         typ, folders = conn.list()

@@ -34,7 +34,8 @@ class MailGateway(ABC):
     """Osobna skrzynka pracownika agenta."""
 
     @abstractmethod
-    def fetch_unread(self) -> list[IncomingMail]: ...
+    def fetch_unread(self, skip=None) -> list[IncomingMail]:
+        """skip(message_id) -> True: wiadomość już przyjęta – nie pobieraj jej treści jeszcze raz."""
 
     @abstractmethod
     def send(self, to: list[str], subject: str, body: str, cc: list[str] | None = None,

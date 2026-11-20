@@ -17,7 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, quote, unquote, urlsplit
 
-from .wiedza import EXTS, MAX_FILE, KnowledgeBase, KnowledgeError
+from .wiedza import ALL_CATEGORIES, EXTS, MAX_FILE, OTHER, KnowledgeBase, KnowledgeError, category_from_word
 
 MAX_UPLOAD = 120 * 1024 * 1024
 
@@ -42,8 +42,13 @@ th{font-size:12px;color:var(--mute);font-weight:600;text-transform:uppercase;let
 td.num{white-space:nowrap;color:var(--mute);font-variant-numeric:tabular-nums}
 a{color:var(--acc)}.hit{padding:10px 0;border-bottom:1px solid var(--line)}.hit:last-child{border:0}
 .snip{color:var(--mute);font-size:14px;margin:4px 0 0}
-.msg{padding:10px 14px;border-radius:8px;margin-bottom:16px;background:var(--acc2)}.msg.bad{color:var(--bad)}
+.msg{padding:14px 16px;border-radius:9px;margin-bottom:16px;background:var(--acc2);border:2px solid var(--acc);font-weight:600}.msg.bad{color:var(--bad);background:#fdecec;border-color:var(--bad)}.back{display:inline-block;margin:6px 0 10px;font-weight:600}
 .empty{color:var(--mute);padding:8px 0}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tabs a{padding:5px 11px;border:1px solid var(--line);border-radius:999px;text-decoration:none;font-size:13px}
+.tabs a.on{background:var(--acc);color:var(--card);border-color:var(--acc)}
+.cat{display:inline-block;font-size:11px;padding:1px 7px;border-radius:999px;background:var(--acc2);color:var(--acc);font-weight:600;margin-right:6px;white-space:nowrap}
+select{padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--bg);color:var(--ink);font:inherit}
+form.inline{display:inline-flex;gap:4px;align-items:center}form.inline select{padding:3px 5px;font-size:13px}form.inline button{padding:4px 8px;font-size:13px}
 @media (max-width:600px){td.hide,th.hide{display:none}}
 """
 
@@ -69,44 +74,130 @@ def _page(body: str, msg: str = "", bad: bool = False) -> bytes:
     return f"""<!doctype html><html lang="pl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Monika – baza wiedzy</title>
 <style>{CSS}</style></head><body><main>
-<header><h1>Monika <small>baza wiedzy kancelarii</small></h1>
+<header><h1><a href="/" style="color:inherit;text-decoration:none">Monika</a> <small>baza wiedzy kancelarii</small></h1>
 <span class="note">wersja testowa · bez logowania · tylko dane fikcyjne</span></header>
-{m}{body}</main><script>{JS}</script></body></html>""".encode()
+{m}{body}</main><script>{JS}{"if(document.querySelector('.msg'))window.scrollTo(0,0);" if msg else ""}</script></body></html>""".encode()
 
 
-def render_index(kb: KnowledgeBase, query: str = "", msg: str = "", bad: bool = False) -> bytes:
-    entries = kb.entries()
+def _cat_label(e) -> str:
+    return f'<span class="cat">{html.escape(ALL_CATEGORIES.get(e, e))}</span>'
+
+
+def render_index(kb: KnowledgeBase, query: str = "", msg: str = "", bad: bool = False, cat: str | None = None) -> bytes:
+    all_entries = kb.entries()
+    entries = [e for e in all_entries if cat is None or e.category == cat]
     accept = ",".join(sorted(EXTS))
+    counts = {k: sum(1 for e in all_entries if e.category == k) for k in ALL_CATEGORIES}
+    opts = "".join(f'<option value="{k}">{html.escape(v)}</option>' for k, v in ALL_CATEGORIES.items())
     parts = [f"""<section class="card"><h2>Szukaj</h2>
 <form class="row" method="get" action="/"><input type="search" name="q" value="{html.escape(query)}"
-placeholder="np. zgromadzenie wspólników, fundacja rodzinna, odsetki" autofocus><button>Szukaj</button></form>"""]
+placeholder="np. zgromadzenie wspólników, fundacja rodzinna, odsetki" autofocus>
+{f'<input type="hidden" name="k" value="{cat}">' if cat else ""}<button>Szukaj</button></form>"""]
     if query:
-        hits = kb.search(query, limit=20)
+        parts.append(f'<a class="back" href="/{f"?k={cat}" if cat else ""}">← Wróć do listy plików</a>')
+        hits = kb.search(query, limit=20, category=cat)
         if hits:
             parts.append("".join(
-                f'<div class="hit"><a href="/plik/{quote(h.name)}">{html.escape(h.name)}</a>'
+                f'<div class="hit">{_cat_label(h.name.split("/", 1)[0] if "/" in h.name else OTHER)}'
+                f'<a href="/plik/{quote(h.name)}">{html.escape(h.name.rsplit("/", 1)[-1])}</a>'
                 + "".join(f'<p class="snip">{html.escape(s)}</p>' for s in h.snippets) + "</div>" for h in hits))
         else:
             parts.append(f'<p class="empty">Brak trafień dla „{html.escape(query)}”.</p>')
     parts.append("</section>")
-    parts.append(f"""<section class="card"><h2>Dodaj pliki</h2>
+    upload_msg = f'<div class="msg{" bad" if bad else ""}">{html.escape(msg)}</div>' if msg else ""
+    parts.append(f"""<section class="card"><h2>Dodaj pliki</h2>{upload_msg}
 <form method="post" action="/dodaj" enctype="multipart/form-data">
 <div class="drop" id="drop">Przeciągnij pliki tutaj albo kliknij, żeby wybrać<br>
 <span class="note">PDF, Word, Excel, tekst · do {MAX_FILE // 2**20} MB na plik · można też wysłać mailem
 o temacie „wiedza” na adres Moniki</span><div id="wybrane" class="note"></div></div>
 <input type="file" id="pliki" name="pliki" multiple accept="{accept}" hidden>
-<p><button>Dodaj do bazy</button></p></form></section>""")
+<p class="row" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><label>Kategoria:
+<select name="kategoria"><option value="auto">rozpoznaj automatycznie</option>{opts}</select></label>
+<button>Dodaj do bazy</button></p>
+<p class="note">Mailem: temat „wiedza wyroki”, „wiedza interpretacje”, „wiedza przepisy”, „wiedza komentarze”,
+„wiedza artykuły”, „wiedza wzory” (sam „wiedza” = rozpoznanie automatyczne).</p></form></section>""")
+    move_opts = lambda cur: "".join(   # noqa: E731
+        f'<option value="{k}"{" selected" if k == cur else ""}>{html.escape(v)}</option>' for k, v in ALL_CATEGORIES.items())
     rows = "".join(
-        f'<tr><td><a href="/plik/{quote(e.name)}">{html.escape(e.name)}</a></td>'
+        f'<tr><td><input type="checkbox" form="zbiorczo" name="zaznacz" value="{html.escape(e.name)}" '
+        f'aria-label="Zaznacz {html.escape(e.filename)}"> '
+        f'{_cat_label(e.category)}<a href="/plik/{quote(e.name)}">{html.escape(e.filename)}</a></td>'
         f'<td class="num">{_size(e.size)}</td>'
         f'<td class="num hide">{time.strftime("%d.%m.%Y %H:%M", time.localtime(e.mtime))}</td>'
+        f'<td><select form="zbiorczo" name="kat:{html.escape(e.name)}" data-cur="{e.category}" aria-label="Kategoria">'
+        f'{move_opts(e.category)}</select></td>'
         f'<td><form method="post" action="/usun" onsubmit="return confirm(\'Usunąć {html.escape(e.name)}?\')">'
         f'<input type="hidden" name="plik" value="{html.escape(e.name)}"><button class="link">usuń</button></form></td></tr>'
         for e in entries)
-    parts.append(f"""<section class="card"><h2>Pliki w bazie ({len(entries)})</h2>
-{'<table><tr><th>Plik</th><th>Rozmiar</th><th class="hide">Dodano</th><th></th></tr>' + rows + '</table>'
- if entries else '<p class="empty">Baza jest pusta.</p>'}</section>""")
+    tabs = f'<a href="/" class="{"on" if cat is None else ""}">Wszystkie ({len(all_entries)})</a>' + "".join(
+        f'<a href="/?k={k}" class="{"on" if cat == k else ""}">{html.escape(v)} ({counts[k]})</a>'
+        for k, v in ALL_CATEGORIES.items())
+    dup_link = ('<p style="margin:0 0 12px"><a href="/duplikaty">Pokaż duplikaty</a> '
+                '<span class="note">ten sam dokument zapisany kilka razy (np. PDF i .txt) – sprawdzenie trwa kilkanaście sekund</span></p>')
+    sort_btn = dup_link + ('<form method="post" action="/porzadkuj" style="margin:0 0 12px"><button>Uporządkuj pliki z „Inne”</button>'
+                ' <span class="note">przenosi do kategorii pliki, które da się rozpoznać</span></form>') if counts[OTHER] else ""
+    bulk = ('<form id="zbiorczo" method="post" action="/przenies-zbiorczo" class="bulk">'
+            '<button id="zapisz">Przenieś zmienione i zaznaczone</button> '
+            '<label>zaznaczone do: <select name="kategoria"><option value="">— bez zmiany —</option>'
+            + move_opts(None) + '</select></label>'
+            ' <span id="bulk-info" role="status"></span>'
+            ' <span class="note">zmień kategorię w wierszach albo zaznacz pliki – jeden przycisk przenosi wszystko</span>'
+            '</form>')
+    parts.append(f"""<section class="card"><h2>Pliki w bazie</h2><nav class="tabs">{tabs}</nav>{sort_btn}
+{bulk + '<table><tr><th><input type="checkbox" id="wszystkie" aria-label="Zaznacz wszystkie"> Plik</th>'
+ '<th>Rozmiar</th><th class="hide">Dodano</th><th>Kategoria</th><th></th></tr>' + rows + '</table>' + BULK_JS
+ if entries else '<p class="empty">Brak plików.</p>'}</section>""")
     return _page("".join(parts), msg, bad)
+
+
+BULK_JS = """<script>
+(function(){var b=document.getElementById('zapisz'),f=document.getElementById('zbiorczo'),
+k=f.querySelector('select[name=kategoria]'),h=document.getElementById('bulk-info');
+function pl(x){return x===1?'plik':(x%10>=2&&x%10<=4&&(x%100<12||x%100>14))?'pliki':'plików';}
+function n(){var c=0;document.querySelectorAll('select[data-cur]').forEach(function(s){var ch=s.value!==s.dataset.cur;
+s.closest('tr').classList.toggle('zmiana',ch);if(ch)c++;});
+var z=0;document.querySelectorAll('input[name=zaznacz]').forEach(function(x){x.closest('tr').classList.toggle('zazn',x.checked);if(x.checked)z++;});
+var t=k.value,m=c+(t?z:0);b.textContent='Przenieś '+m+' '+pl(m);
+k.classList.toggle('brak',z>0&&!t);
+h.textContent=z?('Zaznaczono '+z+' '+pl(z)+(t?'.':' – wybierz kategorię w „zaznaczone do”.')):'';return [c,z,t];}
+f.addEventListener('submit',function(e){var r=n();if(r[1]&&!r[2]&&!r[0]){e.preventDefault();k.focus();}});
+document.addEventListener('change',n);var a=document.getElementById('wszystkie');
+if(a)a.addEventListener('change',function(){document.querySelectorAll('input[name=zaznacz]').forEach(function(x){x.checked=a.checked});n();});n();})();
+</script><style>.bulk{position:sticky;top:0;background:#fff;padding:8px 0;z-index:2;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+tr.zmiana td{background:#fff7d6}tr.zazn td{background:#eef6ff}select.brak{outline:2px solid #c0392b}#bulk-info{font-weight:600;color:#1f4e5f}</style>"""
+
+
+def render_duplicates(kb: KnowledgeBase, msg: str = "", bad: bool = False) -> bytes:
+    groups = kb.duplicates()
+    def row(n: str, first: bool) -> str:
+        cat = n.split("/", 1)[0] if "/" in n else OTHER
+        keep = ' <span class="note">(zostaw jeden)</span>' if first else ""
+        return (f'<tr><td>{_cat_label(cat)}<a href="/plik/{quote(n)}">{html.escape(n.rsplit("/", 1)[-1])}</a>{keep}</td>'
+                f'<td><form method="post" action="/usun" onsubmit="return confirm(\'Usunąć {html.escape(n)}?\')">'
+                f'<input type="hidden" name="plik" value="{html.escape(n)}"><input type="hidden" name="wroc" value="/duplikaty">'
+                f'<button class="link">usuń</button></form></td></tr>')
+    body = "".join(f'<table style="margin-bottom:14px">{"".join(row(n, i == 0) for i, n in enumerate(g))}</table>'
+                   for g in groups)
+    return _page(f"""<section class="card"><h2>Duplikaty</h2><a class="back" href="/">← Wróć do listy plików</a>
+<p class="note">Grupy plików z tym samym dokumentem ({len(groups)}). Nic nie jest usuwane automatycznie – w każdej
+grupie zostaw jeden plik (najlepiej PDF), resztę usuń.</p>
+{body or '<p class="empty">Brak duplikatów.</p>'}</section>""", msg, bad)
+
+
+def parse_form(content_type: str, body: bytes) -> tuple[list[tuple[str, bytes]], dict[str, str]]:
+    """Pliki i zwykłe pola formularza multipart."""
+    msg = BytesParser(policy=policy.HTTP).parsebytes(
+        f"Content-Type: {content_type}\r\nMIME-Version: 1.0\r\n\r\n".encode() + body)
+    files, fields = [], {}
+    for part in msg.iter_parts() if msg.is_multipart() else []:
+        name = part.get_filename()
+        if name:
+            files.append((name, part.get_payload(decode=True) or b""))
+        else:
+            field = part.get_param("name", header="content-disposition")
+            if field:
+                fields[str(field)] = (part.get_payload(decode=True) or b"").decode("utf-8", "replace")
+    return files, fields
 
 
 def parse_multipart(content_type: str, body: bytes) -> list[tuple[str, bytes]]:
@@ -138,8 +229,8 @@ def make_handler(kb: KnowledgeBase, log=None):
             if self.command != "HEAD":
                 self.wfile.write(body)
 
-        def _redirect(self, msg: str = "", bad: bool = False):
-            loc = "/" + (f"?msg={quote(msg)}" + ("&bad=1" if bad else "") if msg else "")
+        def _redirect(self, msg: str = "", bad: bool = False, to: str = "/"):
+            loc = (to if to in ("/", "/duplikaty") else "/") + (f"?msg={quote(msg)}" + ("&bad=1" if bad else "") if msg else "")
             self.send_response(HTTPStatus.SEE_OTHER)
             self.send_header("Location", loc)
             self.send_header("Content-Length", "0")
@@ -154,8 +245,12 @@ def make_handler(kb: KnowledgeBase, log=None):
             if url.path == "/zdrowie":
                 return self._send(200, b"ok", "text/plain; charset=utf-8")
             if url.path == "/":
+                k = (q.get("k") or [""])[0]
                 return self._send(200, render_index(kb, (q.get("q") or [""])[0].strip(),
-                                                    (q.get("msg") or [""])[0], bool(q.get("bad"))))
+                                                    (q.get("msg") or [""])[0], bool(q.get("bad")),
+                                                    k if k in ALL_CATEGORIES else None))
+            if url.path == "/duplikaty":
+                return self._send(200, render_duplicates(kb, (q.get("msg") or [""])[0], bool(q.get("bad"))))
             if url.path.startswith("/plik/"):
                 name = unquote(url.path[len("/plik/"):])
                 try:
@@ -173,11 +268,16 @@ def make_handler(kb: KnowledgeBase, log=None):
                 return self._redirect(f"Za duże przesłanie (limit {MAX_UPLOAD // 2**20} MB naraz).", True)
             body = self.rfile.read(length)
             if url.path == "/dodaj":
-                files = parse_multipart(self.headers.get("Content-Type", ""), body)
-                saved, errors = [], []
+                files, fields = parse_form(self.headers.get("Content-Type", ""), body)
+                forced = category_from_word(fields.get("kategoria"))
+                saved, errors, dups = [], [], []
                 for name, data in files:
                     try:
-                        saved.append(kb.save(name, data))
+                        new, dup = kb.save_report(name, data, forced)
+                        if dup:
+                            dups.append(f"{name} (już jest jako {new.rsplit('/', 1)[-1]})")
+                        else:
+                            saved.append(new)
                     except KnowledgeError as e:
                         errors.append(str(e))
                 if log:
@@ -185,17 +285,62 @@ def make_handler(kb: KnowledgeBase, log=None):
                 if not files:
                     return self._redirect("Nie wybrano plików.", True)
                 msg = (f"Dodano: {', '.join(saved)}." if saved else "") + \
+                      (f" Nie dodano – ten sam dokument już jest w bazie: {'; '.join(dups)}." if dups else "") + \
                       (f" Pominięto: {'; '.join(errors)}" if errors else "")
-                return self._redirect(msg.strip(), bool(errors) and not saved)
-            if url.path == "/usun":
-                name = (parse_qs(body.decode("utf-8", "replace")).get("plik") or [""])[0]
+                return self._redirect(msg.strip(), bool(errors or dups) and not saved)
+            if url.path == "/przenies":
+                form = parse_qs(body.decode("utf-8", "replace"))
+                name, k = (form.get("plik") or [""])[0], (form.get("kategoria") or [""])[0]
                 try:
-                    kb.delete(name)
+                    new = kb.move(name, k)
                 except KnowledgeError as e:
                     return self._redirect(str(e), True)
                 if log:
+                    log("wiedza_panel_przenies", plik=name, nowa=new)
+                return self._redirect(f"Przeniesiono: {name.rsplit('/', 1)[-1]} → {ALL_CATEGORIES[k]}.")
+            if url.path == "/przenies-zbiorczo":
+                form = parse_qs(body.decode("utf-8", "replace"))
+                plan: dict[str, str] = {}
+                for key, vals in form.items():
+                    if key.startswith("kat:"):
+                        name = key[4:]
+                        cur = name.split("/", 1)[0] if "/" in name else OTHER
+                        if vals[0] != cur:
+                            plan[name] = vals[0]
+                target = (form.get("kategoria") or [""])[0]
+                if target:
+                    for name in form.get("zaznacz", []):
+                        plan[name] = target
+                moved, errors = [], []
+                for name, k in plan.items():
+                    try:
+                        if (name.split("/", 1)[0] if "/" in name else OTHER) != k:
+                            moved.append(kb.move(name, k))
+                    except KnowledgeError as e:
+                        errors.append(str(e))
+                if log:
+                    log("wiedza_panel_przenies_zbiorczo", przeniesione=moved, bledy=len(errors))
+                if not moved and not errors:
+                    return self._redirect("Nic do przeniesienia – zmień kategorię w wierszach albo zaznacz pliki "
+                                          "i wybierz „zaznaczone do”.", True)
+                msg = f"Przeniesiono {len(moved)} plików." + (f" Błędy: {'; '.join(errors)}" if errors else "")
+                return self._redirect(msg, bool(errors) and not moved)
+            if url.path == "/porzadkuj":
+                moved = kb.sort_other()
+                if log:
+                    log("wiedza_panel_porzadkuj", przeniesione=len(moved))
+                return self._redirect(f"Uporządkowano: przeniesiono {len(moved)} plików do kategorii."
+                                      if moved else "Nie rozpoznałam kategorii żadnego pliku z „Inne”.")
+            if url.path == "/usun":
+                form = parse_qs(body.decode("utf-8", "replace"))
+                name, back = (form.get("plik") or [""])[0], (form.get("wroc") or ["/"])[0]
+                try:
+                    kb.delete(name)
+                except KnowledgeError as e:
+                    return self._redirect(str(e), True, back)
+                if log:
                     log("wiedza_panel_usun", plik=name)
-                return self._redirect(f"Usunięto: {name}.")
+                return self._redirect(f"Usunięto: {name}.", False, back)
             return self._send(404, _page("<p>Nie ma takiej strony.</p>"))
 
     return Handler

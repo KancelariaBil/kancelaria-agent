@@ -216,15 +216,33 @@ class AgentPlanner:
 
         @tool("wiedza_szukaj", "Przeszukaj bazę wiedzy kancelarii (procedury, stanowiska, notatki, orzecznictwo "
               "zebrane przez zespół). Używaj przy KAŻDYM zleceniu merytorycznym, zanim sięgniesz do internetu. "
-              "Puste zapytanie = lista wszystkich plików.",
-              {"type": "object", "properties": {"zapytanie": {"type": "string"}}})
+              "Kategorie: interpretacje (podatkowe), wyroki, przepisy (ustawy), komentarze, artykuly (artykuły i książki), wzory (wzory dokumentów), inne – opcjonalnie "
+              "zawęź wyszukiwanie polem kategoria. Puste zapytanie = lista plików.",
+              {"type": "object", "properties": {"zapytanie": {"type": "string"},
+                                                "kategoria": {"type": "string",
+                                                              "enum": ["interpretacje", "wyroki", "przepisy",
+                                                                       "komentarze", "artykuly", "wzory", "inne"]}}})
         @guarded
         def knowledge_search(args):
             q = str(args.get("zapytanie") or "").strip()
+            cat = args.get("kategoria") or None
+            if cat not in (None, "interpretacje", "wyroki", "przepisy", "komentarze", "artykuly", "wzory", "inne"):
+                cat = None
             if not q:
-                rows = kb().entries()
-                return ok("\n".join(f"{e.name} ({e.size // 1024} KB)" for e in rows) or "baza wiedzy jest pusta")
-            hits = kb().search(q)
+                rows = kb().entries(cat)
+                if not rows:
+                    return ok("baza wiedzy jest pusta" if not cat else f"brak plików w kategorii {cat}")
+                if cat is None and len(rows) > 150:
+                    # pełna lista byłaby za długa – liczby w kategoriach i podpowiedź
+                    counts: dict[str, int] = {}
+                    for e in rows:
+                        counts[e.category] = counts.get(e.category, 0) + 1
+                    return ok(f"W bazie jest {len(rows)} plików: " + ", ".join(f"{k}: {v}" for k, v in counts.items())
+                              + ". Szukaj słowami (zapytanie) albo podaj kategorię, żeby zobaczyć listę plików.")
+                shown = rows[:300]
+                more = f"\n… i jeszcze {len(rows) - 300} – zawęź zapytaniem" if len(rows) > 300 else ""
+                return ok("\n".join(f"{e.name} ({e.size // 1024} KB)" for e in shown) + more)
+            hits = kb().search(q, category=cat)
             self._log("wiedza_szukaj", project_id=project_id, trafienia=len(hits))
             if not hits:
                 return ok(f"brak trafień dla: {q} (plików w bazie: {len(kb().entries())})")

@@ -12,8 +12,8 @@ class MockMail(MailGateway):
         self.inbox = list(inbox or [])
         self.sent: list[dict[str, Any]] = []
 
-    def fetch_unread(self) -> list[IncomingMail]:
-        return list(self.inbox)
+    def fetch_unread(self, skip=None) -> list[IncomingMail]:
+        return [m for m in self.inbox if not (skip and skip(m.message_id))]
 
     def send(self, to, subject, body, cc=None, attachments=None, in_reply_to=None, references=None) -> str:
         self.sent.append({"to": to, "subject": subject, "body": body, "cc": cc or [],

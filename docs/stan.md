@@ -1,6 +1,6 @@
 # Stan wdrożenia Moniki
 
-Aktualizuj ten plik przy każdej istotnej zmianie (PR). Ostatnia aktualizacja: 19.11.2026.
+Aktualizuj ten plik przy każdej istotnej zmianie (PR). Ostatnia aktualizacja: 20.11.2026.
 
 ## Działa
 - Serwer: OVH VPS-1 (2 vCore, 4 GB RAM), IP 54.39.231.254, Ubuntu 24.04, użytkownik `ubuntu`,
@@ -36,6 +36,15 @@ Aktualizuj ten plik przy każdej istotnej zmianie (PR). Ostatnia aktualizacja: 1
   (lokalne API `http://127.0.0.1:3000/api/monika/oferta`, klucz `PANEL_API_KEY` w `.env`). Nikt nie dostaje maila;
   tylko gdy wpis się nie uda – informacja do nadawcy oferty. W panelu oferta czeka „do sprawdzenia”.
   Numery rachunków w treści są maskowane. Inne maile w DW – bez zmian.
+- 20.11.2026: baza wiedzy z kategoriami – podkatalogi interpretacje/, wyroki/, przepisy/, komentarze/ (reszta
+  w katalogu głównym = „inne”). Nowy plik trafia do kategorii wskazanej w panelu albo tematem maila
+  („wiedza wyroki” itd.), a bez wskazania – rozpoznanej z nazwy i treści (`wiedza.classify`). Ten sam dokument
+  (identyczne bajty albo tekst) nie jest dodawany drugi raz. Panel: filtr kategorii, „przenieś”, „Uporządkuj”.
+  Naprawa: plik .docx z komentarzem XML wywracał KAŻDE wyszukiwanie (Monika zgłaszała błąd), a lista
+  ponad 800 plików była za długa – teraz liczby w kategoriach. Komendy: `wiedza-indeks`, `wiedza-porzadkuj`.
+- 20.11.2026: duplikaty rozpoznawane także między PDF a .txt (tekst bez znaczników stron i interpunkcji); panel: wyraźny komunikat przy formularzu dodawania, „← Wróć do listy plików” po wyszukaniu, strona „Pokaż duplikaty” (/duplikaty, nic nie usuwa sama), komenda `wiedza-duplikaty`.
+- 20.11.2026: nowa kategoria „Artykuły i książki” (podkatalog artykuly/, temat maila „wiedza artykuły” / „wiedza książki”).
+- 20.11.2026: nowa kategoria „Wzory dokumentów” (podkatalog wzory/, temat maila „wiedza wzory” / „wiedza szablony”; rozpoznawanie po nazwie „wzór/szablon/formularz” i miejscach do wpisania „……”, „[imię i nazwisko]”).
 
 ## Do zrobienia przy przekazaniu (odcięcie od Brandwise / Łukasza)
 - [ ] admin.google.com → Uwierzytelnianie e-maili → „Rozpocznij uwierzytelnianie” (DKIM) – bez tego
