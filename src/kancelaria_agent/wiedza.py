@@ -2,7 +2,7 @@
 przeszukuje i czyta przy każdym zleceniu.
 
 - katalog domyślnie data/wiedza z podkatalogami kategorii: interpretacje/, wyroki/, przepisy/, komentarze/,
-  artykuly/ (artykuły i książki);
+  artykuly/ (artykuły i książki), wzory/ (wzory dokumentów);
   pliki bez rozpoznanej kategorii leżą w katalogu głównym („inne”). Nowy plik trafia do kategorii wskazanej
   przez człowieka (panel, temat maila „wiedza wyroki”) albo rozpoznanej z nazwy i treści (classify),
 - tekst wyciągany raz i trzymany w ukrytym podkatalogu .tekst/ (odświeżany po zmianie pliku),
@@ -33,6 +33,7 @@ CATEGORIES = {
     "przepisy": "Przepisy ustaw",
     "komentarze": "Komentarze",
     "artykuly": "Artykuły i książki",
+    "wzory": "Wzory dokumentów",
 }
 OTHER = "inne"
 ALL_CATEGORIES = {**CATEGORIES, OTHER: "Inne"}
@@ -44,6 +45,8 @@ CATEGORY_WORDS = {
     "komentarze": "komentarze", "komentarz": "komentarze", "glosa": "komentarze", "glosy": "komentarze",
     "artykuly": "artykuly", "artykul": "artykuly", "ksiazki": "artykuly", "ksiazka": "artykuly",
     "publikacje": "artykuly", "publikacja": "artykuly", "monografia": "artykuly", "monografie": "artykuly",
+    "wzory": "wzory", "wzor": "wzory", "wzorow": "wzory", "szablony": "wzory", "szablon": "wzory",
+    "formularze": "wzory", "formularz": "wzory",
     "inne": OTHER,
 }
 
@@ -133,6 +136,12 @@ def classify(filename: str, text: str) -> str:
     score["artykuly"] += 3 * bool(re.search(r"slowa kluczowe|keywords|streszczenie|abstract", t))
     score["artykuly"] += 2 * bool(re.search(r"\bbibliografia\b|\bliteratura\b|\bspis tresci\b", t))
     score["artykuly"] += 2 * bool(re.search(r"\bwydawnictwo\b|\bwydanie [ivx0-9]", t))
+    # wzory dokumentów (umowy, pisma, wezwania do uzupełnienia – z miejscami do wpisania)
+    if re.search(r"wzor|szablon|template|formularz", n): score["wzory"] += 9
+    score["wzory"] += 3 * bool(re.search(r"\bwzor\b|\bwzor (umowy|pisma|pozwu|wezwania|wniosku|pelnomocnictwa)", t))
+    blanks = len(re.findall(r"\.{6,}|…{2,}|_{5,}|\[\s*(?:imie|nazw|data|kwota|adres|miejscowosc|•|\.\.\.)", t))
+    score["wzory"] += 5 if blanks >= 4 else 2 if blanks >= 2 else 0
+    score["wzory"] += 2 * bool(re.search(r"\(?miejscowosc,? (?:i )?data\)?|\((?:czytelny )?podpis\)", t))
     best = max(score, key=lambda k: score[k])
     ordered = sorted(score.values(), reverse=True)
     if score[best] < 5 or ordered[0] - ordered[1] < 2:

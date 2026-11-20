@@ -38,6 +38,7 @@ Aktualizuj ten plik przy każdej istotnej zmianie (PR). Ostatnia aktualizacja: 2
   ponad 800 plików była za długa – teraz liczby w kategoriach. Komendy: `wiedza-indeks`, `wiedza-porzadkuj`.
 - 20.11.2026: duplikaty rozpoznawane także między PDF a .txt (tekst bez znaczników stron i interpunkcji); panel: wyraźny komunikat przy formularzu dodawania, „← Wróć do listy plików” po wyszukaniu, strona „Pokaż duplikaty” (/duplikaty, nic nie usuwa sama), komenda `wiedza-duplikaty`.
 - 20.11.2026: nowa kategoria „Artykuły i książki” (podkatalog artykuly/, temat maila „wiedza artykuły” / „wiedza książki”).
+- 20.11.2026: nowa kategoria „Wzory dokumentów” (podkatalog wzory/, temat maila „wiedza wzory” / „wiedza szablony”; rozpoznawanie po nazwie „wzór/szablon/formularz” i miejscach do wpisania „……”, „[imię i nazwisko]”).
 
 ## Do zrobienia przy przekazaniu (odcięcie od Brandwise / Łukasza)
 - [ ] admin.google.com → Uwierzytelnianie e-maili → „Rozpocznij uwierzytelnianie” (DKIM) – bez tego
