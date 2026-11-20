@@ -109,6 +109,8 @@ def classify(filename: str, text: str) -> str:
                                        or "opis zdarzenia przyszlego" in t)
     # wyroki i orzecznictwo
     if re.search(r"wyrok|orzeczen|uchwala sn|postanowienie s", n): score["wyroki"] += 6
+    # sygnatura w nazwie pliku, np. ii-fsk-638-22.pdf, I ACa 123/25.pdf
+    if re.search(r"(?:^|[^a-z0-9])[ivx]{1,4}[-_ ][a-z]{1,6}[-_ ]\d{1,6}[-_ /]\d{2}(?:[^0-9]|$)", n): score["wyroki"] += 8
     score["wyroki"] += 6 * bool("w imieniu rzeczypospolitej" in t)
     score["wyroki"] += 3 * bool(_SYGN_RE.search(t))
     score["wyroki"] += 2 * bool(re.search(r"sad najwyzszy|naczelny sad administracyjny|wojewodzki sad administracyjny"

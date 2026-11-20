@@ -33,6 +33,10 @@ NOTATKA = "Notatka z narady: omówić z klientem termin spotkania."
     ("dokument.txt", ARTYKUL, "artykuly"),
     ("dokument.txt", NOTATKA, "inne"),
     ("dokument.docx", WZOR, "wzory"),
+    ("ii-fsk-638-22.pdf", "", "wyroki"),
+    ("ii-fsk-1605-24-zastosowanie-uproszczenia-safe.pdf", "", "wyroki"),
+    ("I ACa 123-25.pdf", "", "wyroki"),
+    ("i10410-o1.pdf", "", "inne"),
     ("Wzór pełnomocnictwa.docx", "", "wzory"),
     ("szablon wezwania do zaplaty.docx", "", "wzory"),
     ("Wzór pozwu – wyrok zaoczny.docx", "", "wzory"),
@@ -166,7 +170,7 @@ def test_panel_bulk_move(panel):  # noqa: F811
     kb.save("b.txt", b"Druga notatka testowa, inna.")
     kb.save("c.txt", b"Trzecia notatka testowa, jeszcze inna.")
     page = urllib.request.urlopen(url + "/").read().decode()
-    assert 'action="/przenies-zbiorczo"' in page and 'name="kat:a.txt"' in page
+    assert 'action="/przenies-zbiorczo"' in page and 'name="kat:a.txt"' in page and 'id="bulk-info"' in page
     form = (b"kat:a.txt=wyroki&kat:b.txt=inne&kat:c.txt=inne"            # a – zmiana w wierszu
             b"&zaznacz=b.txt&zaznacz=c.txt&kategoria=artykuly")           # b, c – zaznaczone
     r = _post(url + "/przenies-zbiorczo", form, "application/x-www-form-urlencoded")
