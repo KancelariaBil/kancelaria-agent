@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import imaplib
 import json
 import signal
+import ssl
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -78,15 +80,33 @@ class Agent:
         self._running: dict = {}
         self._deferred: set[int] = set()
         self._started: dict[int, float] = {}
+        self._mail_pause_until = 0.0   # po błędzie skrzynki (np. limit Gmaila) – przerwa zamiast pętli restartów
+        self._fetched: set[str] = set()   # maile (bez importu) już pobrane – nie ściągamy ich treści co 30 s
         self._pool = ThreadPoolExecutor(max_workers=self.workers, thread_name_prefix="monika") \
             if self.workers > 1 else None
 
+    def _already_received(self, message_id: str) -> bool:
+        # Zwykły mail: pobrany już w tym uruchomieniu (po restarcie pobierze się raz – może nieść import pamięci).
+        return message_id in self._fetched or self.store.seen_ref(f"import:{message_id}")
+
     def ingest_mail(self) -> int:
         n = 0
-        mails = self.integrations.mail.fetch_unread()
+        if time.time() < self._mail_pause_until:
+            return 0
+        try:
+            mails = self.integrations.mail.fetch_unread(skip=self._already_received)
+        except (imaplib.IMAP4.error, OSError, ssl.SSLError) as e:
+            # Błąd skrzynki nie może wywracać Moniki (restart co kilka sekund tylko pogłębia blokadę Gmaila).
+            limit = "OVERQUOTA" in str(e) or "bandwidth" in str(e).lower()
+            pause = 15 * 60 if limit else 60
+            self._mail_pause_until = time.time() + pause
+            self.audit.record("mail_fetch_error", error=str(e)[:300], pause_s=pause, limit=limit)
+            return 0
         for info in getattr(self.integrations.mail, "unreadable", None) or []:
             self.audit.record("mail_unreadable", info=info)
         for mail in mails:
+            if not mail.data:
+                self._fetched.add(mail.message_id)
             payload = {"message_id": mail.message_id, "sender": mail.sender,
                        "subject": mail.subject, "body": mail.body, "trusted": mail.trusted,
                        "reply_to": mail.reply_to, "attachments": list(mail.attachments),
