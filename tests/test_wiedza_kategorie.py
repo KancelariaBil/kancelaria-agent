@@ -167,3 +167,38 @@ def test_panel_bulk_move(panel):  # noqa: F811
     assert {e.name for e in kb.entries()} == {"wyroki/a.txt", "artykuly/b.txt", "artykuly/c.txt"}
     r = _post(url + "/przenies-zbiorczo", b"kat:wyroki/a.txt=wyroki", "application/x-www-form-urlencoded")
     assert "Nic do przeniesienia" in urllib.parse.unquote(r.headers["Location"])
+
+
+def test_pdf_and_txt_of_same_document_are_duplicates(tmp_path):
+    kb = KnowledgeBase(tmp_path)
+    body = "Fundacja rodzinna – opracowanie testowe. " * 40
+    kb.save("opracowanie.txt", ("--- strona 1 ---\n" + body[:800] + "\n--- strona 2 ---\n" + body[800:]).encode())
+    name, dup = kb.save_report("opracowanie-kopia.md", ("# " + body.upper()).encode())
+    assert dup and name == "opracowanie.txt"
+    (tmp_path / "stara-kopia.txt").write_text(body.replace(" – ", "\n\n"), encoding="utf-8")   # sprzed wykrywania
+    (tmp_path / "rozdzial-2.txt").write_text(body[:1200] + "Inny rozdział. " * 30, encoding="utf-8")  # ten sam początek
+    assert kb.duplicates() == [["opracowanie.txt", "stara-kopia.txt"]]
+
+
+def test_panel_back_link_and_messages(panel):  # noqa: F811
+    kb, url = panel
+    kb.save("a.txt", b"Zgromadzenie testowe.")
+    page = urllib.request.urlopen(url + "/?q=zgromadzenie").read().decode()
+    assert "Wróć do listy plików" in page and '<a href="/"' in page
+    page = urllib.request.urlopen(url + "/?msg=" + quote("już jest w bazie") + "&bad=1").read().decode()
+    assert page.count("już jest w bazie") == 2          # na górze i przy formularzu dodawania
+
+
+def test_panel_duplicates_page(panel):  # noqa: F811
+    kb, url = panel
+    body = "Uchwała wspólników – dokument testowy. " * 30
+    kb.root.mkdir(parents=True, exist_ok=True)
+    (kb.root / "uchwala.txt").write_text(body, encoding="utf-8")
+    (kb.root / "uchwala-2.txt").write_text(body, encoding="utf-8")
+    page = urllib.request.urlopen(url + "/duplikaty").read().decode()
+    assert "uchwala.txt" in page and "uchwala-2.txt" in page and "(zostaw jeden)" in page
+    r = _post(url + "/usun", b"plik=uchwala-2.txt&wroc=%2Fduplikaty", "application/x-www-form-urlencoded")
+    assert r.headers["Location"].startswith("/duplikaty?msg=")
+    assert "Brak duplikatów" in urllib.request.urlopen(url + "/duplikaty").read().decode()
+    r = _post(url + "/usun", b"plik=nie-ma.txt&wroc=https://zly.example", "application/x-www-form-urlencoded")
+    assert r.headers["Location"].startswith("/?msg=")

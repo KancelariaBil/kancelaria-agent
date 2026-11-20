@@ -36,6 +36,7 @@ Aktualizuj ten plik przy każdej istotnej zmianie (PR). Ostatnia aktualizacja: 2
   (identyczne bajty albo tekst) nie jest dodawany drugi raz. Panel: filtr kategorii, „przenieś”, „Uporządkuj”.
   Naprawa: plik .docx z komentarzem XML wywracał KAŻDE wyszukiwanie (Monika zgłaszała błąd), a lista
   ponad 800 plików była za długa – teraz liczby w kategoriach. Komendy: `wiedza-indeks`, `wiedza-porzadkuj`.
+- 20.11.2026: duplikaty rozpoznawane także między PDF a .txt (tekst bez znaczników stron i interpunkcji); panel: wyraźny komunikat przy formularzu dodawania, „← Wróć do listy plików” po wyszukaniu, strona „Pokaż duplikaty” (/duplikaty, nic nie usuwa sama), komenda `wiedza-duplikaty`.
 - 20.11.2026: nowa kategoria „Artykuły i książki” (podkatalog artykuly/, temat maila „wiedza artykuły” / „wiedza książki”).
 
 ## Do zrobienia przy przekazaniu (odcięcie od Brandwise / Łukasza)

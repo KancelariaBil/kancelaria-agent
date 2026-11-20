@@ -42,7 +42,7 @@ th{font-size:12px;color:var(--mute);font-weight:600;text-transform:uppercase;let
 td.num{white-space:nowrap;color:var(--mute);font-variant-numeric:tabular-nums}
 a{color:var(--acc)}.hit{padding:10px 0;border-bottom:1px solid var(--line)}.hit:last-child{border:0}
 .snip{color:var(--mute);font-size:14px;margin:4px 0 0}
-.msg{padding:10px 14px;border-radius:8px;margin-bottom:16px;background:var(--acc2)}.msg.bad{color:var(--bad)}
+.msg{padding:14px 16px;border-radius:9px;margin-bottom:16px;background:var(--acc2);border:2px solid var(--acc);font-weight:600}.msg.bad{color:var(--bad);background:#fdecec;border-color:var(--bad)}.back{display:inline-block;margin:6px 0 10px;font-weight:600}
 .empty{color:var(--mute);padding:8px 0}
 .tabs{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}.tabs a{padding:5px 11px;border:1px solid var(--line);border-radius:999px;text-decoration:none;font-size:13px}
 .tabs a.on{background:var(--acc);color:var(--card);border-color:var(--acc)}
@@ -74,9 +74,9 @@ def _page(body: str, msg: str = "", bad: bool = False) -> bytes:
     return f"""<!doctype html><html lang="pl"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Monika – baza wiedzy</title>
 <style>{CSS}</style></head><body><main>
-<header><h1>Monika <small>baza wiedzy kancelarii</small></h1>
+<header><h1><a href="/" style="color:inherit;text-decoration:none">Monika</a> <small>baza wiedzy kancelarii</small></h1>
 <span class="note">wersja testowa · bez logowania · tylko dane fikcyjne</span></header>
-{m}{body}</main><script>{JS}</script></body></html>""".encode()
+{m}{body}</main><script>{JS}{"if(document.querySelector('.msg'))window.scrollTo(0,0);" if msg else ""}</script></body></html>""".encode()
 
 
 def _cat_label(e) -> str:
@@ -94,6 +94,7 @@ def render_index(kb: KnowledgeBase, query: str = "", msg: str = "", bad: bool = 
 placeholder="np. zgromadzenie wspólników, fundacja rodzinna, odsetki" autofocus>
 {f'<input type="hidden" name="k" value="{cat}">' if cat else ""}<button>Szukaj</button></form>"""]
     if query:
+        parts.append(f'<a class="back" href="/{f"?k={cat}" if cat else ""}">← Wróć do listy plików</a>')
         hits = kb.search(query, limit=20, category=cat)
         if hits:
             parts.append("".join(
@@ -103,7 +104,8 @@ placeholder="np. zgromadzenie wspólników, fundacja rodzinna, odsetki" autofocu
         else:
             parts.append(f'<p class="empty">Brak trafień dla „{html.escape(query)}”.</p>')
     parts.append("</section>")
-    parts.append(f"""<section class="card"><h2>Dodaj pliki</h2>
+    upload_msg = f'<div class="msg{" bad" if bad else ""}">{html.escape(msg)}</div>' if msg else ""
+    parts.append(f"""<section class="card"><h2>Dodaj pliki</h2>{upload_msg}
 <form method="post" action="/dodaj" enctype="multipart/form-data">
 <div class="drop" id="drop">Przeciągnij pliki tutaj albo kliknij, żeby wybrać<br>
 <span class="note">PDF, Word, Excel, tekst · do {MAX_FILE // 2**20} MB na plik · można też wysłać mailem
@@ -130,7 +132,9 @@ o temacie „wiedza” na adres Moniki</span><div id="wybrane" class="note"></di
     tabs = f'<a href="/" class="{"on" if cat is None else ""}">Wszystkie ({len(all_entries)})</a>' + "".join(
         f'<a href="/?k={k}" class="{"on" if cat == k else ""}">{html.escape(v)} ({counts[k]})</a>'
         for k, v in ALL_CATEGORIES.items())
-    sort_btn = ('<form method="post" action="/porzadkuj" style="margin:0 0 12px"><button>Uporządkuj pliki z „Inne”</button>'
+    dup_link = ('<p style="margin:0 0 12px"><a href="/duplikaty">Pokaż duplikaty</a> '
+                '<span class="note">ten sam dokument zapisany kilka razy (np. PDF i .txt) – sprawdzenie trwa kilkanaście sekund</span></p>')
+    sort_btn = dup_link + ('<form method="post" action="/porzadkuj" style="margin:0 0 12px"><button>Uporządkuj pliki z „Inne”</button>'
                 ' <span class="note">przenosi do kategorii pliki, które da się rozpoznać</span></form>') if counts[OTHER] else ""
     bulk = ('<form id="zbiorczo" method="post" action="/przenies-zbiorczo" class="bulk">'
             '<button id="zapisz">Przenieś zmienione i zaznaczone</button> '
@@ -155,6 +159,23 @@ document.addEventListener('change',n);var a=document.getElementById('wszystkie')
 if(a)a.addEventListener('change',function(){document.querySelectorAll('input[name=zaznacz]').forEach(function(x){x.checked=a.checked});n();});n();})();
 </script><style>.bulk{position:sticky;top:0;background:#fff;padding:8px 0;z-index:2;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 tr.zmiana td{background:#fff7d6}</style>"""
+
+
+def render_duplicates(kb: KnowledgeBase, msg: str = "", bad: bool = False) -> bytes:
+    groups = kb.duplicates()
+    def row(n: str, first: bool) -> str:
+        cat = n.split("/", 1)[0] if "/" in n else OTHER
+        keep = ' <span class="note">(zostaw jeden)</span>' if first else ""
+        return (f'<tr><td>{_cat_label(cat)}<a href="/plik/{quote(n)}">{html.escape(n.rsplit("/", 1)[-1])}</a>{keep}</td>'
+                f'<td><form method="post" action="/usun" onsubmit="return confirm(\'Usunąć {html.escape(n)}?\')">'
+                f'<input type="hidden" name="plik" value="{html.escape(n)}"><input type="hidden" name="wroc" value="/duplikaty">'
+                f'<button class="link">usuń</button></form></td></tr>')
+    body = "".join(f'<table style="margin-bottom:14px">{"".join(row(n, i == 0) for i, n in enumerate(g))}</table>'
+                   for g in groups)
+    return _page(f"""<section class="card"><h2>Duplikaty</h2><a class="back" href="/">← Wróć do listy plików</a>
+<p class="note">Grupy plików z tym samym dokumentem ({len(groups)}). Nic nie jest usuwane automatycznie – w każdej
+grupie zostaw jeden plik (najlepiej PDF), resztę usuń.</p>
+{body or '<p class="empty">Brak duplikatów.</p>'}</section>""", msg, bad)
 
 
 def parse_form(content_type: str, body: bytes) -> tuple[list[tuple[str, bytes]], dict[str, str]]:
@@ -202,8 +223,8 @@ def make_handler(kb: KnowledgeBase, log=None):
             if self.command != "HEAD":
                 self.wfile.write(body)
 
-        def _redirect(self, msg: str = "", bad: bool = False):
-            loc = "/" + (f"?msg={quote(msg)}" + ("&bad=1" if bad else "") if msg else "")
+        def _redirect(self, msg: str = "", bad: bool = False, to: str = "/"):
+            loc = (to if to in ("/", "/duplikaty") else "/") + (f"?msg={quote(msg)}" + ("&bad=1" if bad else "") if msg else "")
             self.send_response(HTTPStatus.SEE_OTHER)
             self.send_header("Location", loc)
             self.send_header("Content-Length", "0")
@@ -222,6 +243,8 @@ def make_handler(kb: KnowledgeBase, log=None):
                 return self._send(200, render_index(kb, (q.get("q") or [""])[0].strip(),
                                                     (q.get("msg") or [""])[0], bool(q.get("bad")),
                                                     k if k in ALL_CATEGORIES else None))
+            if url.path == "/duplikaty":
+                return self._send(200, render_duplicates(kb, (q.get("msg") or [""])[0], bool(q.get("bad"))))
             if url.path.startswith("/plik/"):
                 name = unquote(url.path[len("/plik/"):])
                 try:
@@ -303,14 +326,15 @@ def make_handler(kb: KnowledgeBase, log=None):
                 return self._redirect(f"Uporządkowano: przeniesiono {len(moved)} plików do kategorii."
                                       if moved else "Nie rozpoznałam kategorii żadnego pliku z „Inne”.")
             if url.path == "/usun":
-                name = (parse_qs(body.decode("utf-8", "replace")).get("plik") or [""])[0]
+                form = parse_qs(body.decode("utf-8", "replace"))
+                name, back = (form.get("plik") or [""])[0], (form.get("wroc") or ["/"])[0]
                 try:
                     kb.delete(name)
                 except KnowledgeError as e:
-                    return self._redirect(str(e), True)
+                    return self._redirect(str(e), True, back)
                 if log:
                     log("wiedza_panel_usun", plik=name)
-                return self._redirect(f"Usunięto: {name}.")
+                return self._redirect(f"Usunięto: {name}.", False, back)
             return self._send(404, _page("<p>Nie ma takiej strony.</p>"))
 
     return Handler
