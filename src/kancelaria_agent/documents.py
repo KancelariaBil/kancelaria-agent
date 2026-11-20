@@ -39,19 +39,22 @@ def docx_text(path: Path) -> str:
     doc = Document(str(path))
     out = []
     body = doc.element.body
+    def is_(el, suffix: str) -> bool:
+        # komentarze i instrukcje XML mają `tag` będący funkcją, nie tekstem – pomijamy je
+        return isinstance(el.tag, str) and el.tag.endswith(suffix)
+
     for child in body.iterchildren():
-        tag = child.tag.rsplit("}", 1)[-1]
-        if tag == "p":
-            text = "".join(t.text or "" for t in child.iter() if t.tag.endswith("}t"))
+        if is_(child, "}p"):
+            text = "".join(t.text or "" for t in child.iter() if is_(t, "}t"))
             out.append(text)
-        elif tag == "tbl":
+        elif is_(child, "}tbl"):
             for row in child.iter():
-                if row.tag.endswith("}tr"):
+                if is_(row, "}tr"):
                     cells = []
                     for cell in row.iterchildren():
-                        if cell.tag.endswith("}tc"):
-                            cells.append(" ".join("".join(t.text or "" for t in p.iter() if t.tag.endswith("}t"))
-                                                  for p in cell.iter() if p.tag.endswith("}p")).strip())
+                        if is_(cell, "}tc"):
+                            cells.append(" ".join("".join(t.text or "" for t in p.iter() if is_(t, "}t"))
+                                                  for p in cell.iter() if is_(p, "}p")).strip())
                     out.append(" | ".join(cells))
     return "\n".join(out).strip()
 

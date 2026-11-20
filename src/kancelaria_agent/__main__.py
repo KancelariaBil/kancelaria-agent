@@ -120,6 +120,29 @@ def _www(args) -> int:
     return 0
 
 
+def _knowledge_tools(args) -> int:
+    """wiedza-indeks: tekst wszystkich plików do pamięci podręcznej (szybkie wyszukiwanie);
+    wiedza-porzadkuj: pliki z „inne” do rozpoznanych kategorii."""
+    from .wiedza import ALL_CATEGORIES, KnowledgeBase
+    cfg = load_config(Path(args.config) if args.config else None)
+    kb = KnowledgeBase(cfg.knowledge_dir)
+    if args.cmd == "wiedza-porzadkuj":
+        moved = kb.sort_other()
+        for old, new in moved:
+            print(f"{old} → {new}")
+        left = len(kb.entries("inne"))
+        print(f"Przeniesiono {len(moved)}; w „inne” zostało {left}.")
+        return 0
+    rows = kb.entries()
+    for i, e in enumerate(rows, 1):
+        kb.text(e.name)
+        if i % 50 == 0:
+            print(f"{i}/{len(rows)}", flush=True)
+    counts = {k: len(kb.entries(k)) for k in ALL_CATEGORIES}
+    print(f"Gotowe: {len(rows)} plików. " + ", ".join(f"{ALL_CATEGORIES[k]}: {v}" for k, v in counts.items()))
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="kancelaria_agent")
     ap.add_argument("--config", help="ścieżka do config.yaml (domyślnie: katalog projektu)")
@@ -133,6 +156,8 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("sprawy", help="lista spraw (katalog, etap, zlecający)")
     sub.add_parser("wzory-import", help="import wzorów dokumentów z pliku ZIP").add_argument("zip")
     sub.add_parser("www", help="panel WWW bazy wiedzy (usługa monika-www)")
+    sub.add_parser("wiedza-indeks", help="baza wiedzy: przygotuj tekst wszystkich plików (szybkie wyszukiwanie)")
+    sub.add_parser("wiedza-porzadkuj", help="baza wiedzy: przenieś pliki z „inne” do rozpoznanych kategorii")
     p = sub.add_parser("proposals", help="lista propozycji")
     p.add_argument("--all", action="store_true")
     for name in ("approve", "reject"):
@@ -147,6 +172,8 @@ def main(argv: list[str] | None = None) -> int:
         return _templates_import(args)
     if args.cmd == "www":
         return _www(args)
+    if args.cmd in ("wiedza-indeks", "wiedza-porzadkuj"):
+        return _knowledge_tools(args)
 
     cfg, store, audit, integ = _build(args, with_demo=getattr(args, "demo_mail", False))
     try:
