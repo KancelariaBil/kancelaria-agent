@@ -140,6 +140,7 @@ o temacie „wiedza” na adres Moniki</span><div id="wybrane" class="note"></di
             '<button id="zapisz">Przenieś zmienione i zaznaczone</button> '
             '<label>zaznaczone do: <select name="kategoria"><option value="">— bez zmiany —</option>'
             + move_opts(None) + '</select></label>'
+            ' <span id="bulk-info" role="status"></span>'
             ' <span class="note">zmień kategorię w wierszach albo zaznacz pliki – jeden przycisk przenosi wszystko</span>'
             '</form>')
     parts.append(f"""<section class="card"><h2>Pliki w bazie</h2><nav class="tabs">{tabs}</nav>{sort_btn}
@@ -150,15 +151,20 @@ o temacie „wiedza” na adres Moniki</span><div id="wybrane" class="note"></di
 
 
 BULK_JS = """<script>
-(function(){var b=document.getElementById('zapisz'),f=document.getElementById('zbiorczo');
+(function(){var b=document.getElementById('zapisz'),f=document.getElementById('zbiorczo'),
+k=f.querySelector('select[name=kategoria]'),h=document.getElementById('bulk-info');
+function pl(x){return x===1?'plik':(x%10>=2&&x%10<=4&&(x%100<12||x%100>14))?'pliki':'plików';}
 function n(){var c=0;document.querySelectorAll('select[data-cur]').forEach(function(s){var ch=s.value!==s.dataset.cur;
 s.closest('tr').classList.toggle('zmiana',ch);if(ch)c++;});
-var z=document.querySelectorAll('input[name=zaznacz]:checked').length,t=f.querySelector('select[name=kategoria]').value;
-b.textContent='Przenieś '+(c+(t?z:0))+' plików';}
+var z=0;document.querySelectorAll('input[name=zaznacz]').forEach(function(x){x.closest('tr').classList.toggle('zazn',x.checked);if(x.checked)z++;});
+var t=k.value,m=c+(t?z:0);b.textContent='Przenieś '+m+' '+pl(m);
+k.classList.toggle('brak',z>0&&!t);
+h.textContent=z?('Zaznaczono '+z+' '+pl(z)+(t?'.':' – wybierz kategorię w „zaznaczone do”.')):'';return [c,z,t];}
+f.addEventListener('submit',function(e){var r=n();if(r[1]&&!r[2]&&!r[0]){e.preventDefault();k.focus();}});
 document.addEventListener('change',n);var a=document.getElementById('wszystkie');
 if(a)a.addEventListener('change',function(){document.querySelectorAll('input[name=zaznacz]').forEach(function(x){x.checked=a.checked});n();});n();})();
 </script><style>.bulk{position:sticky;top:0;background:#fff;padding:8px 0;z-index:2;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-tr.zmiana td{background:#fff7d6}</style>"""
+tr.zmiana td{background:#fff7d6}tr.zazn td{background:#eef6ff}select.brak{outline:2px solid #c0392b}#bulk-info{font-weight:600;color:#1f4e5f}</style>"""
 
 
 def render_duplicates(kb: KnowledgeBase, msg: str = "", bad: bool = False) -> bytes:
