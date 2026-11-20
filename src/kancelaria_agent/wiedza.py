@@ -140,6 +140,28 @@ def classify(filename: str, text: str) -> str:
     return best
 
 
+_PAGE_RE = re.compile(r"-{2,} ?strona \d+ ?-{2,}")
+
+
+def dup_key(text: str) -> str:
+    """Tekst do porównań duplikatów: bez znaczników stron, polskich znaków, interpunkcji i odstępów."""
+    t = _PAGE_RE.sub(" ", fold(text))
+    return re.sub(r"[^a-z0-9]+", "", t)
+
+
+def same_text(a: str, b: str) -> bool:
+    """Ten sam dokument: identyczny tekst albo ten sam początek I koniec przy długości ±3%
+    (drobne różnice wyciągania tekstu z PDF/.txt; rozdziały jednej książki mają ten sam początek, ale inny koniec)."""
+    if len(a) < 400 or len(b) < 400:
+        return False
+    if a == b:
+        return True
+    n = min(4000, len(a), len(b))
+    m = min(1500, len(a), len(b))
+    return (a[:n] == b[:n] and a[-m:] == b[-m:]
+            and abs(len(a) - len(b)) <= 0.03 * max(len(a), len(b)))
+
+
 def _terms(query: str) -> list[str]:
     return [w for w in re.findall(r"\w+", fold(query)) if len(w) >= 3][:12]
 
@@ -191,18 +213,37 @@ class KnowledgeBase:
         return target.name if category == OTHER else f"{category}/{target.name}"
 
     def find_duplicate(self, data: bytes, text: str = "") -> str | None:
-        """Ten sam dokument już w bazie (dowolna nazwa i kategoria): identyczne bajty albo identyczny tekst
-        (np. ten sam PDF pobrany drugi raz). Zwraca nazwę istniejącego pliku albo None."""
-        norm = " ".join(fold(text).split())
+        """Ten sam dokument już w bazie (dowolna nazwa, kategoria i format): identyczne bajty albo ten sam tekst
+        (np. ten sam PDF pobrany drugi raz, albo PDF i jego wersja .txt). Zwraca nazwę istniejącego pliku albo None."""
+        key = dup_key(text)
         for e in self.entries():
             p = self.path(e.name)
             if e.size == len(data) and p.read_bytes() == data:
                 return e.name
-            if len(norm) >= 500:
+            if key:
                 cache = self._cache_file(p)
-                if cache.is_file() and " ".join(fold(cache.read_text(encoding="utf-8", errors="replace")).split()) == norm:
+                if cache.is_file() and same_text(key, dup_key(cache.read_text(encoding="utf-8", errors="replace"))):
                     return e.name
         return None
+
+    def duplicates(self) -> list[list[str]]:
+        """Grupy plików z tym samym dokumentem (do przejrzenia przez człowieka – nic nie usuwa)."""
+        keys = []
+        for e in self.entries():
+            try:
+                keys.append((e.name, dup_key(self.text(e.name) or "")))
+            except Exception:  # noqa: BLE001
+                continue
+        groups: list[list[str]] = []
+        used: set[str] = set()
+        for i, (a, ka) in enumerate(keys):
+            if a in used or not ka:
+                continue
+            g = [a] + [b for b, kb_ in keys[i + 1:] if b not in used and kb_ and same_text(ka, kb_)]
+            if len(g) > 1:
+                used.update(g)
+                groups.append(g)
+        return groups
 
     def save(self, filename: str, data: bytes, category: str | None = None) -> str:
         """Zapis nowego pliku (None = kategoria rozpoznana z nazwy i treści). Zwraca nazwę w bazie; gdy ten sam

@@ -126,6 +126,12 @@ def _knowledge_tools(args) -> int:
     from .wiedza import ALL_CATEGORIES, KnowledgeBase
     cfg = load_config(Path(args.config) if args.config else None)
     kb = KnowledgeBase(cfg.knowledge_dir)
+    if args.cmd == "wiedza-duplikaty":
+        groups = kb.duplicates()
+        for g in groups:
+            print(" = ".join(g))
+        print(f"Grup duplikatów: {len(groups)} (nic nie usunięto).")
+        return 0
     if args.cmd == "wiedza-porzadkuj":
         moved = kb.sort_other()
         for old, new in moved:
@@ -157,6 +163,7 @@ def main(argv: list[str] | None = None) -> int:
     sub.add_parser("wzory-import", help="import wzorów dokumentów z pliku ZIP").add_argument("zip")
     sub.add_parser("www", help="panel WWW bazy wiedzy (usługa monika-www)")
     sub.add_parser("wiedza-indeks", help="baza wiedzy: przygotuj tekst wszystkich plików (szybkie wyszukiwanie)")
+    sub.add_parser("wiedza-duplikaty", help="baza wiedzy: lista plików z tym samym dokumentem (nic nie usuwa)")
     sub.add_parser("wiedza-porzadkuj", help="baza wiedzy: przenieś pliki z „inne” do rozpoznanych kategorii")
     p = sub.add_parser("proposals", help="lista propozycji")
     p.add_argument("--all", action="store_true")
@@ -172,7 +179,7 @@ def main(argv: list[str] | None = None) -> int:
         return _templates_import(args)
     if args.cmd == "www":
         return _www(args)
-    if args.cmd in ("wiedza-indeks", "wiedza-porzadkuj"):
+    if args.cmd in ("wiedza-indeks", "wiedza-porzadkuj", "wiedza-duplikaty"):
         return _knowledge_tools(args)
 
     cfg, store, audit, integ = _build(args, with_demo=getattr(args, "demo_mail", False))
