@@ -186,6 +186,8 @@ class Agent:
         """Oferta w DW → wpis do panelu (bez maila do nikogo). Model nie jest potrzebny."""
         from .planner import PlannedAction
         rel = oferty.take_offer_file(self.cfg.projects_dir, payload)
+        if payload.get("_offer") == "fwd":   # przekazana oferta – klient, data i treść z przekazanego maila
+            payload = oferty.forwarded_view(payload, self.agent_email, self.team)
         data = oferty.extract_offer(payload, self.agent_email, self.team, rel)
         data["trusted_sender"] = payload.get("trusted") is True
         self.audit.record("offer_detected", message_id=payload.get("message_id"), sender=payload.get("sender"),
@@ -282,8 +284,9 @@ class Agent:
         """Projekt zadania bez skutków ubocznych (do sprawdzenia, czy nad projektem już ktoś pracuje)."""
         if kind != "email" or payload.get("trusted") is not True:
             return None
-        if oferty.is_dw_offer(payload, self.agent_email, self.team):
-            return None   # oferta w DW nie należy do żadnej sprawy Moniki
+        if oferty.is_dw_offer(payload, self.agent_email, self.team) \
+                or oferty.is_forwarded_offer(payload, self.agent_email, self.team):
+            return None   # oferta (w DW albo przekazana) nie należy do żadnej sprawy Moniki
         refs = [r for r in [payload.get("in_reply_to"), *(payload.get("references") or [])] if r]
         p = self.projects.find_for_mail(payload.get("subject", ""), refs, payload.get("sender"))
         return p["id"] if p else None
@@ -298,6 +301,9 @@ class Agent:
             return None, payload, True
         if task["kind"] == "email" and oferty.is_dw_offer(payload, self.agent_email, self.team):
             payload["_offer"] = True
+            return None, payload, True
+        if task["kind"] == "email" and oferty.is_forwarded_offer(payload, self.agent_email, self.team):
+            payload["_offer"] = "fwd"
             return None, payload, True
         project = self._project_for(task["kind"], payload)
         if project is not None:

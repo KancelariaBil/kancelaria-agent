@@ -48,6 +48,94 @@ def is_dw_offer(payload: dict[str, Any], agent_email: str, team: set[str]) -> bo
     return bool(OFFER_WORDS.search(text))
 
 
+_FWD_START = re.compile(r"^-{3,}\s*(?:forwarded message|wiadomość przekazana dalej|przekazana wiadomość|original message|wiadomość oryginalna)\s*-{3,}\s*$", re.IGNORECASE)
+_FWD_HEAD = re.compile(r"^\s*(od|from|data|date|wysłano|sent|temat|subject|do|to|dw|cc)\s*:\s*(.*)$", re.IGNORECASE)
+_HEAD_KEY = {"od": "from", "from": "from", "data": "date", "date": "date", "wysłano": "date", "sent": "date",
+             "temat": "subject", "subject": "subject", "do": "to", "to": "to", "dw": "cc", "cc": "cc"}
+
+
+def parse_forwarded(body: str) -> dict[str, Any] | None:
+    """Przekazana dalej wiadomość w treści maila (Gmail/Outlook): nagłówki Od/Data/Temat/Do/DW i treść."""
+    lines = str(body or "").replace("\r\n", "\n").split("\n")
+    for i, line in enumerate(lines):
+        if not _FWD_START.match(line.strip()):
+            continue
+        head: dict[str, str] = {}
+        j = i + 1
+        while j < len(lines):
+            m = _FWD_HEAD.match(lines[j])
+            if not m:
+                if lines[j].strip() == "" and head:
+                    j += 1
+                    break
+                if head:
+                    break
+                j += 1
+                continue
+            head[_HEAD_KEY[m.group(1).lower()]] = m.group(2).strip()
+            j += 1
+        if not head:
+            return None
+        split = lambda v: [a.strip() for a in re.split(r"[,;](?![^<]*>)", v or "") if a.strip()]
+        return {"from": head.get("from", ""), "date": head.get("date", ""), "subject": head.get("subject", ""),
+                "to": split(head.get("to", "")), "cc": split(head.get("cc", "")), "body": "\n".join(lines[j:]).strip()}
+    return None
+
+
+def _bare_subject(subject: str) -> str:
+    return _SUBJECT_PREFIX.sub("", str(subject or "")).strip()
+
+
+def is_forwarded_offer(payload: dict[str, Any], agent_email: str, team: set[str]) -> bool:
+    """Wysłana wcześniej oferta przekazana Monice (biuro@ w „Do”) z tematem zaczynającym się od „Oferta”."""
+    if payload.get("trusted") is not True or not agent_email:
+        return False
+    me = agent_email.lower()
+    if me not in [_addr(a) for a in payload.get("to") or []]:
+        return False
+    if not re.match(r"oferta\b", _bare_subject(payload.get("subject", "")), re.IGNORECASE):
+        return False
+    # Prośba do Moniki z tematem „Oferta dla X – przygotuj…” to zlecenie, nie wpis: wymagamy przekazanej
+    # wiadomości albo pliku oferty (PDF/Word) w załączniku.
+    has_file = any(Path(str(n)).suffix.lower() in OFFER_FILE_EXTS for n in payload.get("attachments") or [])
+    return has_file or parse_forwarded(payload.get("body", "")) is not None
+
+
+def forwarded_view(payload: dict[str, Any], agent_email: str, team: set[str]) -> dict[str, Any]:
+    """Payload przekazanej oferty widziany tak, jak oryginał: adresat = klient, data i treść z przekazanego maila."""
+    fwd = parse_forwarded(payload.get("body", "")) or {}
+    subject = re.sub(r"^oferta\s*[:\-–]?\s*", "", _bare_subject(payload.get("subject", "")), flags=re.IGNORECASE)
+    subject = _bare_subject(subject) or fwd.get("subject") or "Oferta"
+    date = payload.get("date")
+    if fwd.get("date"):
+        from email.utils import parsedate_to_datetime
+        try:
+            date = parsedate_to_datetime(fwd["date"]).isoformat()
+        except (TypeError, ValueError):
+            date = _pl_date(fwd["date"]) or date
+    me = agent_email.lower()
+    return {**payload, "subject": f"Oferta {subject}" if not re.match(r"oferta\b", subject, re.I) else subject,
+            "to": [a for a in fwd.get("to") or [] if _addr(a) != me], "cc": fwd.get("cc") or [],
+            "body": fwd.get("body") or payload.get("body", ""), "date": date, "forwarded": True}
+
+
+_PL_MONTHS = {"sty": 1, "lut": 2, "mar": 3, "kwi": 4, "maj": 5, "cze": 6, "lip": 7, "sie": 8, "wrz": 9, "paź": 10, "paz": 10, "lis": 11, "gru": 12}
+
+
+def _pl_date(v: str) -> str | None:
+    """„czw., 20 lis 2026 o 10:15” / „20.11.2026 10:15” → ISO (czas lokalny bez strefy)."""
+    m = re.search(r"(\d{1,2})\s+([a-ząćęłńóśźż]{3})\w*\.?\s+(\d{4})(?:\D+(\d{1,2}):(\d{2}))?", v, re.IGNORECASE)
+    if m and m.group(2).lower()[:3] in _PL_MONTHS:
+        d, mth, y = int(m.group(1)), _PL_MONTHS[m.group(2).lower()[:3]], int(m.group(3))
+    else:
+        m = re.search(r"(\d{1,2})[.\-/](\d{1,2})[.\-/](\d{4})(?:\D+(\d{1,2}):(\d{2}))?", v)
+        if not m:
+            return None
+        d, mth, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+    hh, mm = int(m.group(4) or 12), int(m.group(5) or 0)
+    return f"{y:04d}-{mth:02d}-{d:02d}T{hh:02d}:{mm:02d}:00" if 1 <= d <= 31 and 1 <= mth <= 12 else None
+
+
 def redact_accounts(text: str) -> str:
     """Numery rachunków w stopce nie trafiają do panelu (i nie blokują bezpiecznika płatności)."""
     return _IBAN_RE.sub("[numer rachunku]", text)
