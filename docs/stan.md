@@ -30,6 +30,12 @@ Aktualizuj ten plik przy każdej istotnej zmianie (PR). Ostatnia aktualizacja: 2
   **Panel jest bez logowania (etap testów, decyzja Łukasza) – przed wgraniem prawdziwych dokumentów
   kancelarii trzeba dodać logowanie.**
 
+- 19.11.2026: oferty w DW → panel kancelarii (`oferty.py`, akcja `panel_offer`, `integrations/panel.py`).
+  Gdy osoba z zespołu wysyła ofertę klientowi z biuro@ w DW (nie w „Do”), Monika bez modelu odczytuje
+  tytuł, kwotę, formę, termin ważności i pierwszy załącznik PDF/Word i wpisuje je do panelu
+  (lokalne API `http://127.0.0.1:3000/api/monika/oferta`, klucz `PANEL_API_KEY` w `.env`). Nikt nie dostaje maila;
+  tylko gdy wpis się nie uda – informacja do nadawcy oferty. W panelu oferta czeka „do sprawdzenia”.
+  Numery rachunków w treści są maskowane. Inne maile w DW – bez zmian.
 - 20.11.2026: baza wiedzy z kategoriami – podkatalogi interpretacje/, wyroki/, przepisy/, komentarze/ (reszta
   w katalogu głównym = „inne”). Nowy plik trafia do kategorii wskazanej w panelu albo tematem maila
   („wiedza wyroki” itd.), a bez wskazania – rozpoznanej z nazwy i treści (`wiedza.classify`). Ten sam dokument

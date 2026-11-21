@@ -44,5 +44,15 @@ class MockInvoices(InvoiceService):
         return f"mock-invoice-{len(self.invoices)}"
 
 
+class MockPanel:
+    def __init__(self):
+        self.offers: list[dict[str, Any]] = []
+
+    def add_offer(self, offer, file_path) -> str:
+        self.offers.append({**offer, "file_path": str(file_path) if file_path else None})
+        return f"mock-offer-{len(self.offers)}"
+
+
 def build_mock(inbox: list[IncomingMail] | None = None) -> Integrations:
-    return Integrations(mail=MockMail(inbox), board=MockBoard(), invoices=MockInvoices(), name="mock")
+    return Integrations(mail=MockMail(inbox), board=MockBoard(), invoices=MockInvoices(), name="mock",
+                        panel=MockPanel())

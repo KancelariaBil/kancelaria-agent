@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import imaplib
 import json
+import os
 import signal
 import ssl
 import threading
@@ -11,7 +12,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 
-from . import guards
+from . import guards, oferty
 from .audit import AuditLog
 from .config import Config
 from .executor import Executor
@@ -111,7 +112,8 @@ class Agent:
                        "subject": mail.subject, "body": mail.body, "trusted": mail.trusted,
                        "reply_to": mail.reply_to, "attachments": list(mail.attachments),
                        "in_reply_to": mail.in_reply_to, "references": list(mail.references), "data": mail.data,
-                       "date": mail.date, "headers": mail.headers}
+                       "date": mail.date, "headers": mail.headers,
+                       "to": list(mail.to), "cc": list(mail.cc)}
             if mail.files and not mail.data and not self.store.seen_ref(f"mail:{mail.message_id}"):
                 # dokumenty od zespołu – na dysk raz (kolejka trzyma tylko ścieżkę)
                 payload["staged"] = self._stage_files(mail.message_id, mail.files)
@@ -174,6 +176,33 @@ class Agent:
                 saved.append(str(target.relative_to(self.projects.dir(project))))
         shutil.rmtree(src, ignore_errors=True)
         return saved
+
+    @property
+    def agent_email(self) -> str:
+        s = getattr(self.integrations.mail, "s", None)
+        return (getattr(s, "address", "") or os.environ.get("AGENT_EMAIL", "")).strip().lower()
+
+    def _offer_actions(self, payload: dict) -> list:
+        """Oferta w DW → wpis do panelu (bez maila do nikogo). Model nie jest potrzebny."""
+        from .planner import PlannedAction
+        rel = oferty.take_offer_file(self.cfg.projects_dir, payload)
+        data = oferty.extract_offer(payload, self.agent_email, self.team, rel)
+        data["trusted_sender"] = payload.get("trusted") is True
+        self.audit.record("offer_detected", message_id=payload.get("message_id"), sender=payload.get("sender"),
+                          title=data["title"], amount=data["amount"], file=bool(rel))
+        return [PlannedAction(guards.PANEL_OFFER, data)]
+
+    def _offer_failed(self, task, payload: dict, reason: str) -> None:
+        """Nie udało się wpisać oferty – informacja dla osoby, która ją wysłała (zawsze ktoś z zespołu)."""
+        sender = str(payload.get("from") or "").lower()
+        to = sender if sender in self.team else next(iter(self.cfg.team), "")
+        if not to:
+            return
+        self.executor.submit(guards.SEND_MAIL, {
+            "to": to, "subject": f"Nie wpisałam oferty do panelu: {payload.get('title', '')}"[:200],
+            "body": (f"Oferta z maila „{payload.get('subject', '')}” nie trafiła do panelu kancelarii.\n"
+                     f"Powód: {reason}\n\nWpisz ją ręcznie w panelu (Oferty → Nowa oferta → „już wysłana”)."),
+        }, task_id=task["id"])
 
     # ---- sprawy ----
     def _project_for(self, kind: str, payload: dict):
@@ -253,6 +282,8 @@ class Agent:
         """Projekt zadania bez skutków ubocznych (do sprawdzenia, czy nad projektem już ktoś pracuje)."""
         if kind != "email" or payload.get("trusted") is not True:
             return None
+        if oferty.is_dw_offer(payload, self.agent_email, self.team):
+            return None   # oferta w DW nie należy do żadnej sprawy Moniki
         refs = [r for r in [payload.get("in_reply_to"), *(payload.get("references") or [])] if r]
         p = self.projects.find_for_mail(payload.get("subject", ""), refs, payload.get("sender"))
         return p["id"] if p else None
@@ -264,6 +295,9 @@ class Agent:
         if payload.get("trusted") is True and (task["kind"] == "import" or (
                 task["kind"] == "email" and (_service_subject(payload) in SERVICE_SUBJECTS
                                              or _knowledge_subject(payload)[0]))):
+            return None, payload, True
+        if task["kind"] == "email" and oferty.is_dw_offer(payload, self.agent_email, self.team):
+            payload["_offer"] = True
             return None, payload, True
         project = self._project_for(task["kind"], payload)
         if project is not None:
@@ -292,6 +326,8 @@ class Agent:
                 self.audit.record("mail_blocked", reason="adresat spoza zespołu", to=str(act.get("to"))[:200])
                 continue
             out = self.executor.submit(a.kind, act, task_id=task["id"])
+            if a.kind == guards.PANEL_OFFER and out.status in ("denied", "failed"):
+                self._offer_failed(task, act, out.reason)
             if project and a.kind == guards.SEND_MAIL:
                 own = strip_quoted(str(a.payload.get("body", "")))   # bez cytatu – tylko słowa Moniki
                 self.store.add_project_log(project["id"], "monika", own[:8000])
@@ -324,6 +360,8 @@ class Agent:
     def _diagnostics(self, payload: dict) -> list:
         from .diagnostics import report
         from .planner import PlannedAction
+        if payload.get("_offer"):
+            return self._offer_actions(payload)
         if payload.get("data") is not None or "import" in str(payload.get("subject", "")).lower():
             body, subject = self._import_memory(payload.get("data")), "import pamięci"
         elif _knowledge_subject(payload)[0]:

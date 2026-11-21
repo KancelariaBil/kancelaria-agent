@@ -98,6 +98,15 @@ class Executor:
         if kind == guards.UPDATE_NOTION_TASK:
             i.board.update_task(p["task_id"], p.get("properties", {}))
             return p["task_id"]
+        if kind == guards.PANEL_OFFER:
+            if i.panel is None:
+                raise RuntimeError("brak połączenia z panelem")
+            f = p.get("file")
+            root = (self.cfg.projects_dir.parent / "oferty").resolve()
+            path = (root / f).resolve() if f else None
+            if path is not None and (root not in path.parents or not path.is_file() or (root / f).is_symlink()):
+                raise ValueError(f"brak pliku oferty {f!r}")
+            return i.panel.add_offer(p, path)
         if kind == guards.CREATE_INVOICE:
             return i.invoices.create_invoice(p["client"], p.get("items", []), str(p["amount_pln"]))
         raise ValueError(f"nieznana akcja: {kind}")
