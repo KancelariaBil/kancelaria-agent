@@ -14,7 +14,8 @@ innego repozytorium ani konta.
    **Wyjątek – wymaga zgody osoby zatwierdzającej:** każda zmiana tego, z kim Monika się komunikuje
    (`team`, `guardrails.allowed_recipients`, `guardrails.client_replies`, logika adresata w planerze,
    `Agent._to_team_only`, `guards.py`) oraz listy źródeł internetowych (`OFFICIAL_DOMAINS`).
-   Osoba zatwierdzająca: **Łukasz** (autor projektu) do czasu przekazania kancelarii.
+   Osoba zatwierdzająca: **adw. Barbara Bil** (kancelaria) – od 20.11.2026, z jej decyzji; wcześniej Łukasz (autor projektu).
+   Zgoda wyraźnie w rozmowie z Claude albo na GitHubie; Łukasza warto informować o zmianach w bezpiecznikach.
    Obecnie Monika pisze wyłącznie do osób z `team` (Basia, Łukasz) i nigdy do klientów, sądów ani drugiej strony.
 2. **Tryb próbny (`dry_run`) jest domyślnie włączony.** Wyłączenie tylko wyraźną decyzją człowieka w PR.
 3. **Każdy skutek zewnętrzny (mail) przechodzi przez `Executor`.** Nie wołaj integracji z innego miejsca.
