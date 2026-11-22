@@ -169,19 +169,45 @@ tr.zmiana td{background:#fff7d6}tr.zazn td{background:#eef6ff}select.brak{outlin
 
 def render_duplicates(kb: KnowledgeBase, msg: str = "", bad: bool = False) -> bytes:
     groups = kb.duplicates()
-    def row(n: str, first: bool) -> str:
+    def row(n: str, gi: int, first: bool) -> str:
         cat = n.split("/", 1)[0] if "/" in n else OTHER
         keep = ' <span class="note">(zostaw jeden)</span>' if first else ""
-        return (f'<tr><td>{_cat_label(cat)}<a href="/plik/{quote(n)}">{html.escape(n.rsplit("/", 1)[-1])}</a>{keep}</td>'
+        return (f'<tr><td><input type="checkbox" form="dup-usun" name="zaznacz" value="{html.escape(n)}" '
+                f'data-g="{gi}" data-keep="{1 if first else 0}" aria-label="Zaznacz {html.escape(n)}"> '
+                f'{_cat_label(cat)}<a href="/plik/{quote(n)}">{html.escape(n.rsplit("/", 1)[-1])}</a>{keep}</td>'
                 f'<td><form method="post" action="/usun" onsubmit="return confirm(\'Usunąć {html.escape(n)}?\')">'
                 f'<input type="hidden" name="plik" value="{html.escape(n)}"><input type="hidden" name="wroc" value="/duplikaty">'
                 f'<button class="link">usuń</button></form></td></tr>')
-    body = "".join(f'<table style="margin-bottom:14px">{"".join(row(n, i == 0) for i, n in enumerate(g))}</table>'
-                   for g in groups)
+    body = "".join(f'<table style="margin-bottom:14px">{"".join(row(n, gi, i == 0) for i, n in enumerate(g))}</table>'
+                   for gi, g in enumerate(groups))
+    bulk = ('<form id="dup-usun" method="post" action="/usun-zbiorczo" class="bulk">'
+            '<button type="button" id="dup-all">Zaznacz wszystkie duplikaty</button> '
+            '<button type="button" id="dup-none">Odznacz</button> '
+            '<button id="dup-go" class="danger">Usuń zaznaczone (0)</button> '
+            '<span class="note">„Zaznacz wszystkie” pomija plik oznaczony „zostaw jeden” w każdej grupie</span>'
+            '</form>' + DUP_JS) if groups else ""
     return _page(f"""<section class="card"><h2>Duplikaty</h2><a class="back" href="/">← Wróć do listy plików</a>
 <p class="note">Grupy plików z tym samym dokumentem ({len(groups)}). Nic nie jest usuwane automatycznie – w każdej
 grupie zostaw jeden plik (najlepiej PDF), resztę usuń.</p>
-{body or '<p class="empty">Brak duplikatów.</p>'}</section>""", msg, bad)
+{bulk}{body or '<p class="empty">Brak duplikatów.</p>'}</section>""", msg, bad)
+
+
+DUP_JS = """<script>
+(function(){var f=document.getElementById('dup-usun'),go=document.getElementById('dup-go');
+function boxes(){return document.querySelectorAll('input[form=dup-usun][name=zaznacz]');}
+function pl(x){return x===1?'plik':(x%10>=2&&x%10<=4&&(x%100<12||x%100>14))?'pliki':'plików';}
+function n(){var z=0;boxes().forEach(function(x){x.closest('tr').classList.toggle('zazn',x.checked);if(x.checked)z++;});
+go.textContent='Usuń zaznaczone ('+z+')';go.disabled=!z;return z;}
+document.getElementById('dup-all').addEventListener('click',function(){boxes().forEach(function(x){x.checked=x.dataset.keep!=='1';});n();});
+document.getElementById('dup-none').addEventListener('click',function(){boxes().forEach(function(x){x.checked=false;});n();});
+document.addEventListener('change',n);
+f.addEventListener('submit',function(e){var z=n(),all={},cnt={};
+boxes().forEach(function(x){var g=x.dataset.g;cnt[g]=(cnt[g]||0)+1;if(x.checked)all[g]=(all[g]||0)+1;});
+var full=Object.keys(all).filter(function(g){return all[g]===cnt[g];}).length;
+var q='Usunąć '+z+' '+pl(z)+'? Tego nie da się cofnąć.'+(full?'\\n\\nUwaga: w '+full+' grupach zaznaczono WSZYSTKIE kopie – dokument zniknie z bazy całkowicie.':'');
+if(!z||!confirm(q))e.preventDefault();});n();})();
+</script><style>.bulk{position:sticky;top:0;background:#fff;padding:8px 0;z-index:2;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+tr.zazn td{background:#fdecea}button.danger{background:#c0392b;color:#fff;border-color:#c0392b}button.danger:disabled{opacity:.5}</style>"""
 
 
 def parse_form(content_type: str, body: bytes) -> tuple[list[tuple[str, bytes]], dict[str, str]]:
@@ -331,6 +357,22 @@ def make_handler(kb: KnowledgeBase, log=None):
                     log("wiedza_panel_porzadkuj", przeniesione=len(moved))
                 return self._redirect(f"Uporządkowano: przeniesiono {len(moved)} plików do kategorii."
                                       if moved else "Nie rozpoznałam kategorii żadnego pliku z „Inne”.")
+            if url.path == "/usun-zbiorczo":
+                form = parse_qs(body.decode("utf-8", "replace"))
+                names = list(dict.fromkeys(form.get("zaznacz", [])))
+                if not names:
+                    return self._redirect("Nic nie zaznaczono.", True, "/duplikaty")
+                deleted, errors = [], []
+                for name in names:
+                    try:
+                        kb.delete(name)
+                        deleted.append(name)
+                    except KnowledgeError as e:
+                        errors.append(str(e))
+                if log:
+                    log("wiedza_panel_usun_zbiorczo", usuniete=deleted, bledy=len(errors))
+                msg = f"Usunięto {len(deleted)} plików." + (f" Błędy: {'; '.join(errors)}" if errors else "")
+                return self._redirect(msg, bool(errors) and not deleted, "/duplikaty")
             if url.path == "/usun":
                 form = parse_qs(body.decode("utf-8", "replace"))
                 name, back = (form.get("plik") or [""])[0], (form.get("wroc") or ["/"])[0]
