@@ -30,6 +30,7 @@ Aktualizuj ten plik przy każdej istotnej zmianie (PR). Ostatnia aktualizacja: 2
   **Panel jest bez logowania (etap testów, decyzja Łukasza) – przed wgraniem prawdziwych dokumentów
   kancelarii trzeba dodać logowanie.**
 
+- 21.11.2026: oferta wysłana wcześniej – przekaż ją Monice (biuro@ w „Do”) z tematem zaczynającym się od „Oferta” (np. „Oferta: Fwd: …”). Monika bierze klienta, datę i treść z przekazanej wiadomości (nagłówki Od/Data/Temat/Do Gmaila i Outlooka) i wpisuje ofertę do panelu jak z DW. Warunek: w mailu jest przekazana wiadomość albo plik PDF/Word – sama prośba „Oferta dla X – przygotuj” zostaje zwykłym zadaniem.
 - 19.11.2026: oferty w DW → panel kancelarii (`oferty.py`, akcja `panel_offer`, `integrations/panel.py`).
   Gdy osoba z zespołu wysyła ofertę klientowi z biuro@ w DW (nie w „Do”), Monika bez modelu odczytuje
   tytuł, kwotę, formę, termin ważności i pierwszy załącznik PDF/Word i wpisuje je do panelu
