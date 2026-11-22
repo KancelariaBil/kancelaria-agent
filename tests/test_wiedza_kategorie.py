@@ -213,3 +213,21 @@ def test_panel_duplicates_page(panel):  # noqa: F811
     assert "Brak duplikatów" in urllib.request.urlopen(url + "/duplikaty").read().decode()
     r = _post(url + "/usun", b"plik=nie-ma.txt&wroc=https://zly.example", "application/x-www-form-urlencoded")
     assert r.headers["Location"].startswith("/?msg=")
+
+
+def test_panel_duplicates_bulk_delete(panel):  # noqa: F811
+    kb, url = panel
+    kb.root.mkdir(parents=True, exist_ok=True)
+    for i, txt in enumerate(["Pierwsza uchwała testowa. ", "Druga umowa testowa. "]):
+        for n in ("", "-2", "-3"):
+            (kb.root / f"doc{i}{n}.txt").write_text(txt * 30, encoding="utf-8")
+    page = urllib.request.urlopen(url + "/duplikaty").read().decode()
+    assert 'id="dup-all"' in page and "Usuń zaznaczone" in page and 'action="/usun-zbiorczo"' in page
+    assert page.count('data-keep="1"') == 2 and page.count('data-keep="0"') == 4
+    r = _post(url + "/usun-zbiorczo", b"", "application/x-www-form-urlencoded")
+    assert "Nic%20nie%20zaznaczono" in r.headers["Location"] and r.headers["Location"].startswith("/duplikaty?")
+    data = "&".join(f"zaznacz={n}" for n in ["doc0-2.txt", "doc0-3.txt", "doc1-2.txt", "doc1-3.txt", "nie-ma.txt"])
+    r = _post(url + "/usun-zbiorczo", data.encode(), "application/x-www-form-urlencoded")
+    assert r.headers["Location"].startswith("/duplikaty?msg=") and "Usuni%C4%99to%204" in r.headers["Location"]
+    assert sorted(p.name for p in kb.root.glob("*.txt")) == ["doc0.txt", "doc1.txt"]
+    assert "Brak duplikatów" in urllib.request.urlopen(url + "/duplikaty").read().decode()
