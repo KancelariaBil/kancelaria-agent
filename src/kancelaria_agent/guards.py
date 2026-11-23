@@ -18,7 +18,9 @@ CREATE_NOTION_TASK = "create_notion_task"
 UPDATE_NOTION_TASK = "update_notion_task"
 # Wpis oferty do panelu kancelarii (lokalne API na tym samym serwerze). Nikt nie dostaje maila.
 PANEL_OFFER = "panel_offer"
-KNOWN_ACTIONS = {SEND_MAIL, CREATE_INVOICE, CREATE_NOTION_TASK, UPDATE_NOTION_TASK, PANEL_OFFER}
+# Kopia maila z Moniką w DW do „Skrzynki DW” w panelu (lokalne API). Nikt nie dostaje maila.
+PANEL_DW = "panel_dw"
+KNOWN_ACTIONS = {SEND_MAIL, CREATE_INVOICE, CREATE_NOTION_TASK, UPDATE_NOTION_TASK, PANEL_OFFER, PANEL_DW}
 
 # Klucze wskazujące na dane płatnicze (porównanie po normalizacji).
 PAYMENT_KEYS = {
@@ -180,6 +182,18 @@ def evaluate(cfg: Config, kind: str, payload: dict[str, Any]) -> Decision:
         if f is not None and (not isinstance(f, str) or f.startswith("/") or "\\" in f
                               or ".." in f.split("/") or f.count("/") != 1):
             return Decision(Verdict.DENY, f"niedozwolona ścieżka pliku oferty: {f!r}")
+
+    if kind == PANEL_DW:
+        if not str(payload.get("message_id") or "").strip():
+            return Decision(Verdict.DENY, "mail z DW bez identyfikatora")
+        if payload.get("trusted_sender") is not True:
+            return Decision(Verdict.DENY, "Skrzynka DW tylko z maili zweryfikowanych osób z zespołu")
+        files = payload.get("files") or []
+        if not isinstance(files, list) or len(files) > 10:
+            return Decision(Verdict.DENY, "niepoprawna lista załączników DW")
+        for f in files:
+            if not isinstance(f, str) or f.startswith("/") or "\\" in f or ".." in f.split("/") or f.count("/") != 1:
+                return Decision(Verdict.DENY, f"niedozwolona ścieżka pliku DW: {f!r}")
 
     if kind == CREATE_INVOICE and "amount_pln" not in payload:
         return Decision(Verdict.DENY, "brak kwoty (amount_pln)")

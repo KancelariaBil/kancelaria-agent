@@ -1,6 +1,6 @@
 """Panel kancelarii (panel.kancelariabil.pl) – działa na tym samym serwerze, wywołanie tylko lokalne.
 
-Jedyne wywołanie: wpisanie oferty z maila w DW (POST /api/monika/oferta). Klucz w .env (PANEL_API_KEY),
+Wywołania: oferta z maila w DW (POST /api/monika/oferta) i kopia maila do Skrzynki DW (POST /api/monika/dw). Klucz w .env (PANEL_API_KEY),
 adres stały – lokalny port panelu (PANEL_URL może go zmienić, ale wyłącznie na 127.0.0.1/localhost).
 """
 
@@ -28,6 +28,10 @@ class PanelGateway(ABC):
     @abstractmethod
     def add_offer(self, offer: dict[str, Any], file_path: Path | None) -> str:
         """Wpisuje ofertę; zwraca id oferty w panelu."""
+
+    @abstractmethod
+    def add_dw(self, mail: dict[str, Any], files: list[Path]) -> str:
+        """Kopia maila z Moniką w DW do Skrzynki DW; zwraca id wpisu w panelu."""
 
 
 def panel_base_url(value: str | None) -> str:
@@ -59,8 +63,21 @@ class HttpPanel(PanelGateway):
         }
         if file_path is not None:
             body["attachment"] = {"name": file_path.name, "base64": base64.b64encode(file_path.read_bytes()).decode()}
+        return self._post("/api/monika/oferta", body, "ofertę")
+
+    def add_dw(self, mail: dict[str, Any], files: list[Path]) -> str:
+        if len(self._key) < 32:
+            raise PanelError("brak PANEL_API_KEY w .env")
+        body = {
+            "messageId": mail["message_id"], "from": mail.get("from"), "to": mail.get("to") or [], "cc": mail.get("cc") or [],
+            "subject": mail.get("subject"), "date": mail.get("date"), "body": mail.get("body"),
+            "attachments": [{"name": f.name, "base64": base64.b64encode(f.read_bytes()).decode()} for f in files],
+        }
+        return self._post("/api/monika/dw", body, "mail z DW")
+
+    def _post(self, path: str, body: dict[str, Any], what: str) -> str:
         req = urllib.request.Request(
-            f"{self.base_url}/api/monika/oferta", data=json.dumps(body).encode(), method="POST",
+            f"{self.base_url}{path}", data=json.dumps(body).encode(), method="POST",
             headers={"Content-Type": "application/json", "Authorization": f"Bearer {self._key}"})
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as r:   # noqa: S310 – adres lokalny, sprawdzony
@@ -74,7 +91,7 @@ class HttpPanel(PanelGateway):
         except (urllib.error.URLError, TimeoutError, ValueError) as e:
             raise PanelError(f"panel niedostępny: {e}") from None
         if not data.get("ok"):
-            raise PanelError(f"panel odrzucił ofertę: {data.get('error', '')}")
+            raise PanelError(f"panel odrzucił {what}: {data.get('error', '')}")
         return str(data.get("id", ""))
 
 
