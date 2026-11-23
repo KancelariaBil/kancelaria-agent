@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Raport stanu serwera (uruchamiany jako root przez apply-update.sh po każdej aktualizacji).
-# Wynik trafia mailem do autora projektu (deploy/ops-report.py) – kanał serwisowy bez SSH.
+# Wynik trafia do dziennika, a mailem tylko gdy w .env jest OPS_REPORT_TO (deploy/ops-report.py).
 # Nie wypisuje sekretów: z .env tylko nazwy zmiennych i prefiks klucza API.
 DIR=/home/ubuntu/kancelaria-agent
 cd "$DIR" || exit 0

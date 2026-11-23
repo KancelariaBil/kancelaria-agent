@@ -18,6 +18,6 @@ systemctl enable monika-www.service >/dev/null 2>&1 || true
 systemctl restart monika-www.service || true
 # Zapora: gdy ufw jest włączony, otwórz port panelu.
 if command -v ufw >/dev/null && ufw status | grep -q "Status: active"; then ufw allow 80/tcp >/dev/null || true; fi
-# Raport serwisowy mailem do autora projektu (diagnoza bez SSH). Nie przerywa aktualizacji.
+# Raport serwisowy: domyślnie tylko do dziennika; mailem tylko gdy w .env jest OPS_REPORT_TO. Nie przerywa aktualizacji.
 sleep 20
 "$DIR/deploy/ops.sh" 2>&1 | "$DIR/.venv/bin/python" "$DIR/deploy/ops-report.py" || true
