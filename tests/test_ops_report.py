@@ -15,6 +15,8 @@ def test_redact_hides_secrets():
 
 def test_recipient_only_from_team():
     team = ("barbara.bil@kancelariabil.pl", "lukasz@brandwise.pl")
-    assert ops.recipient({}, team) == "lukasz@brandwise.pl"
+    # Domyślnie bez maila – adresat tylko z OPS_REPORT_TO i tylko z zespołu.
+    assert ops.recipient({}, team) is None
+    assert ops.recipient({"OPS_REPORT_TO": "barbara.bil@kancelariabil.pl"}, team) == "barbara.bil@kancelariabil.pl"
     assert ops.recipient({"OPS_REPORT_TO": "obcy@example.com"}, team) is None
     assert ops.recipient({}, ("barbara.bil@kancelariabil.pl",)) is None

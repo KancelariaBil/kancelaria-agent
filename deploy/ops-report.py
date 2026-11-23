@@ -1,8 +1,10 @@
 """Wysyła raport serwisowy (stdin) mailem ze skrzynki Moniki do autora projektu.
 
 Uruchamiany przez apply-update.sh (root) po każdej aktualizacji z main. Kanał serwisowy bez SSH:
-adresat musi być w `team` w config.yaml (Monika nie pisze poza zespół). Domyślnie OPS_REPORT_TO
-z .env albo lukasz@brandwise.pl. Błąd wysyłki nie przerywa aktualizacji.
+adresat musi być w `team` w config.yaml (Monika nie pisze poza zespół).
+Domyślnie WYŁĄCZONY (decyzja adw. Barbary Bil, 23.11.2026): mail idzie tylko, gdy w .env jest
+OPS_REPORT_TO. Bez tego raport trafia wyłącznie do dziennika (journalctl -u monika-update).
+Błąd wysyłki nie przerywa aktualizacji.
 """
 from __future__ import annotations
 
@@ -24,15 +26,19 @@ def redact(text: str) -> str:
 
 
 def recipient(env: dict, team: tuple[str, ...]) -> str | None:
-    to = (env.get("OPS_REPORT_TO") or "lukasz@brandwise.pl").strip().lower()
-    return to if to in team else None
+    to = (env.get("OPS_REPORT_TO") or "").strip().lower()
+    return to if to and to in team else None
 
 
 def main() -> int:
     body = redact(sys.stdin.read())[-60000:]
-    cfg = load_config(ROOT / "config.yaml")
     env_file = ROOT / ".env"
     env = read_env_file(env_file) if env_file.exists() else {}
+    if not (env.get("OPS_REPORT_TO") or "").strip():
+        print(body[-4000:])
+        print("ops-report: wysyłka mailem wyłączona (brak OPS_REPORT_TO) – raport tylko w dzienniku")
+        return 0
+    cfg = load_config(ROOT / "config.yaml")
     to = recipient(env, tuple(t.lower() for t in cfg.team))
     if not to:
         print("ops-report: adresat spoza zespołu – nie wysyłam", file=sys.stderr)
