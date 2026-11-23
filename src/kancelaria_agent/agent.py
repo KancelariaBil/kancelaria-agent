@@ -12,7 +12,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 
-from . import guards, oferty
+from . import dw, guards, oferty
 from .audit import AuditLog
 from .config import Config
 from .executor import Executor
@@ -192,6 +192,16 @@ class Agent:
                           title=data["title"], amount=data["amount"], file=bool(rel))
         return [PlannedAction(guards.PANEL_OFFER, data)]
 
+    def _dw_actions(self, payload: dict) -> list:
+        """Mail z Moniką w DW → Skrzynka DW w panelu (bez maila do nikogo). Model nie jest potrzebny."""
+        from .planner import PlannedAction
+        files = dw.take_dw_files(self.cfg.projects_dir, payload)
+        data = dw.extract_dw(payload, files)
+        data["trusted_sender"] = payload.get("trusted") is True
+        self.audit.record("dw_detected", message_id=payload.get("message_id"), sender=payload.get("sender"),
+                          files=len(files))
+        return [PlannedAction(guards.PANEL_DW, data)]
+
     def _offer_failed(self, task, payload: dict, reason: str) -> None:
         """Nie udało się wpisać oferty – informacja dla osoby, która ją wysłała (zawsze ktoś z zespołu)."""
         sender = str(payload.get("from") or "").lower()
@@ -202,6 +212,18 @@ class Agent:
             "to": to, "subject": f"Nie wpisałam oferty do panelu: {payload.get('title', '')}"[:200],
             "body": (f"Oferta z maila „{payload.get('subject', '')}” nie trafiła do panelu kancelarii.\n"
                      f"Powód: {reason}\n\nWpisz ją ręcznie w panelu (Oferty → Nowa oferta → „już wysłana”)."),
+        }, task_id=task["id"])
+
+    def _dw_failed(self, task, payload: dict, reason: str) -> None:
+        """Mail z DW nie trafił do panelu – krótka informacja dla nadawcy (zawsze ktoś z zespołu)."""
+        sender = str(payload.get("from") or "").lower()
+        to = sender if sender in self.team else next(iter(self.cfg.team), "")
+        if not to:
+            return
+        self.executor.submit(guards.SEND_MAIL, {
+            "to": to, "subject": f"Nie zapisałam maila w Skrzynce DW: {payload.get('subject', '')}"[:200],
+            "body": (f"Mail „{payload.get('subject', '')}” (Monika w DW) nie trafił do Skrzynki DW w panelu.\n"
+                     f"Powód: {reason}\n\nJeśli mail dotyczy sprawy, dodaj notatkę w sprawie ręcznie."),
         }, task_id=task["id"])
 
     # ---- sprawy ----
@@ -282,8 +304,8 @@ class Agent:
         """Projekt zadania bez skutków ubocznych (do sprawdzenia, czy nad projektem już ktoś pracuje)."""
         if kind != "email" or payload.get("trusted") is not True:
             return None
-        if oferty.is_dw_offer(payload, self.agent_email, self.team):
-            return None   # oferta w DW nie należy do żadnej sprawy Moniki
+        if oferty.is_dw_offer(payload, self.agent_email, self.team) or dw.is_dw_mail(payload, self.agent_email, self.team):
+            return None   # oferta i mail w DW nie należą do żadnej sprawy Moniki
         refs = [r for r in [payload.get("in_reply_to"), *(payload.get("references") or [])] if r]
         p = self.projects.find_for_mail(payload.get("subject", ""), refs, payload.get("sender"))
         return p["id"] if p else None
@@ -298,6 +320,9 @@ class Agent:
             return None, payload, True
         if task["kind"] == "email" and oferty.is_dw_offer(payload, self.agent_email, self.team):
             payload["_offer"] = True
+            return None, payload, True
+        if task["kind"] == "email" and dw.is_dw_mail(payload, self.agent_email, self.team):
+            payload["_dw"] = True
             return None, payload, True
         project = self._project_for(task["kind"], payload)
         if project is not None:
@@ -328,6 +353,8 @@ class Agent:
             out = self.executor.submit(a.kind, act, task_id=task["id"])
             if a.kind == guards.PANEL_OFFER and out.status in ("denied", "failed"):
                 self._offer_failed(task, act, out.reason)
+            if a.kind == guards.PANEL_DW and out.status in ("denied", "failed"):
+                self._dw_failed(task, act, out.reason)
             if project and a.kind == guards.SEND_MAIL:
                 own = strip_quoted(str(a.payload.get("body", "")))   # bez cytatu – tylko słowa Moniki
                 self.store.add_project_log(project["id"], "monika", own[:8000])
@@ -362,6 +389,8 @@ class Agent:
         from .planner import PlannedAction
         if payload.get("_offer"):
             return self._offer_actions(payload)
+        if payload.get("_dw"):
+            return self._dw_actions(payload)
         if payload.get("data") is not None or "import" in str(payload.get("subject", "")).lower():
             body, subject = self._import_memory(payload.get("data")), "import pamięci"
         elif _knowledge_subject(payload)[0]:

@@ -107,6 +107,17 @@ class Executor:
             if path is not None and (root not in path.parents or not path.is_file() or (root / f).is_symlink()):
                 raise ValueError(f"brak pliku oferty {f!r}")
             return i.panel.add_offer(p, path)
+        if kind == guards.PANEL_DW:
+            if i.panel is None:
+                raise RuntimeError("brak połączenia z panelem")
+            root = (self.cfg.projects_dir.parent / "dw").resolve()
+            paths = []
+            for f in p.get("files") or []:
+                path = (root / f).resolve()
+                if root not in path.parents or not path.is_file() or (root / f).is_symlink():
+                    raise ValueError(f"brak pliku DW {f!r}")
+                paths.append(path)
+            return i.panel.add_dw(p, paths)
         if kind == guards.CREATE_INVOICE:
             return i.invoices.create_invoice(p["client"], p.get("items", []), str(p["amount_pln"]))
         raise ValueError(f"nieznana akcja: {kind}")

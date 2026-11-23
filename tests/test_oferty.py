@@ -150,13 +150,13 @@ def test_panel_failure_tells_the_sender(make_env, monkeypatch):
     assert sent["to"] == ["basia@kancelariabil.pl"] and "Nie wpisałam oferty" in sent["subject"]
 
 
-def test_ordinary_cc_mail_unchanged(make_env, monkeypatch):
-    """Mail w DW, który nie jest ofertą, idzie dotychczasową drogą (planer)."""
+def test_ordinary_cc_mail_goes_to_dw_inbox(make_env, monkeypatch):
+    """Mail w DW, który nie jest ofertą, trafia do Skrzynki DW w panelu (nie do ofert, nie do planera)."""
     m = offer_mail(subject="Termin rozprawy", body="Informuję o terminie rozprawy.")
     cfg, store, integ, agent = make_agent(make_env, [m], monkeypatch)
     agent.tick()
     assert integ.panel.offers == []
-    assert guards.PANEL_OFFER not in [p["action_kind"] for p in store.list_proposals()]
+    assert [p["action_kind"] for p in store.list_proposals()] == [guards.PANEL_DW]
 
 
 def test_offer_attachment_moved_and_sent(make_env, monkeypatch):
