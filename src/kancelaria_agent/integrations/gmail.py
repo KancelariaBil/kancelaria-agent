@@ -13,6 +13,10 @@ Moduł jest wołany wyłącznie przez Executor.
 from __future__ import annotations
 
 import base64
+import html
+import json
+import urllib.parse
+import urllib.request
 import imaplib
 import mimetypes
 import os
@@ -37,6 +41,21 @@ MAX_FILES = 30
 MAX_FETCH = 50
 MAX_BODY_CHARS = 20_000
 TIMEOUT = 30
+SIGNATURE_TTL_S = 6 * 3600   # stopka z Gmaila odświeżana co 6 h (zmiana w Ustawieniach Gmaila zadziała najpóźniej po tym czasie)
+SIGNATURE_RETRY_S = 600      # po błędzie pobrania – kolejna próba za 10 min
+
+
+def _sig_text(sig_html: str) -> str:
+    """Stopka HTML → tekst do części text/plain."""
+    t = re.sub(r"(?is)<(script|style).*?</\1>", "", sig_html)
+    t = re.sub(r"(?i)<br\s*/?>|</(div|p|tr|li|h\d)>", "\n", t)
+    t = html.unescape(re.sub(r"<[^>]+>", "", t))
+    lines = [" ".join(ln.split()) for ln in t.splitlines()]
+    return "\n".join(ln for ln in lines if ln).strip()
+
+
+def _body_html(body: str) -> str:
+    return html.escape(body).replace("\n", "<br>\n")
 
 _ADDR_RE = re.compile(r"^[A-Za-z0-9._%+\-]+@[A-Za-z0-9\-]+(?:\.[A-Za-z0-9\-]+)+$")
 _REPLY_RE = re.compile(r"^\s*odpisz do klienta\s*:\s*(\S+)\s*$", re.IGNORECASE)
@@ -309,6 +328,7 @@ class GmailMail(MailGateway):
         self.s = settings
         self.dry_run = dry_run  # fail-safe: domyślnie szkic zamiast wysyłki
         self._tokens = None
+        self._sig: tuple[str, float] = ("", 0.0)  # (stopka HTML, kiedy pobrana)
         if settings.uses_oauth:
             from .oauth import TokenSource
             self._tokens = TokenSource(settings.client_id, settings.client_secret, settings.refresh_token)
@@ -393,6 +413,25 @@ class GmailMail(MailGateway):
                 return candidate
         raise MailConfigError("nie znaleziono folderu Wersje robocze")
 
+    # -- stopka --
+    def signature_html(self) -> str:
+        """Stopka z Gmaila (Ustawienia → Podpis). Gmail dokleja ją tylko w przeglądarce, a Monika wysyła przez SMTP –
+        więc pobieramy ją z Gmail API (zakres https://mail.google.com/) i doklejamy sami. Błąd = poprzednia stopka albo bez."""
+        if self._tokens is None:
+            return ""
+        sig, at = self._sig
+        if time.time() - at < SIGNATURE_TTL_S:
+            return sig
+        try:
+            url = f"https://gmail.googleapis.com/gmail/v1/users/me/settings/sendAs/{urllib.parse.quote(self.s.address)}"
+            req = urllib.request.Request(url, headers={"Authorization": f"Bearer {self._tokens.access_token()}"})
+            with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+                sig = str(json.loads(r.read().decode()).get("signature") or "")
+            self._sig = (sig, time.time())
+        except Exception:
+            self._sig = (sig, time.time() - SIGNATURE_TTL_S + SIGNATURE_RETRY_S)
+        return sig
+
     # -- budowa wiadomości --
     def _build(self, to: list[str], subject: str, body: str, cc: list[str] | None,
                attachments: list[str] | None = None, in_reply_to: str | None = None,
@@ -415,7 +454,13 @@ class GmailMail(MailGateway):
                 thread.append(in_reply_to)
         if thread:
             msg["References"] = " ".join(thread[-20:])
-        msg.set_content(body)
+        sig = self.signature_html()
+        if sig:   # tekst + HTML ze stopką z Gmaila (logo, imię, funkcja)
+            msg.set_content(body.rstrip() + "\n\n-- \n" + _sig_text(sig) + "\n")
+            msg.add_alternative(f'<div dir="ltr" style="font-family:Arial,Helvetica,sans-serif;font-size:14px">{_body_html(body.rstrip())}'
+                                f'<br><br><div class="gmail_signature">{sig}</div></div>', subtype="html")
+        else:
+            msg.set_content(body)
         for path in attachments or []:
             p = Path(path)
             ctype = mimetypes.guess_type(p.name)[0] or "application/octet-stream"
