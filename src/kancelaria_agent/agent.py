@@ -82,6 +82,7 @@ class Agent:
         self._deferred: set[int] = set()
         self._started: dict[int, float] = {}
         self._mail_pause_until = 0.0   # po błędzie skrzynki (np. limit Gmaila) – przerwa zamiast pętli restartów
+        self._notified_at = 0.0   # ostatnie pobranie powiadomień z panelu
         self._fetched: set[str] = set()   # maile (bez importu) już pobrane – nie ściągamy ich treści co 30 s
         self._pool = ThreadPoolExecutor(max_workers=self.workers, thread_name_prefix="monika") \
             if self.workers > 1 else None
@@ -527,6 +528,42 @@ class Agent:
             self._running[fut] = (task, project, payload)
         self._deferred.clear()
 
+    NOTIFY_EVERY_S = 60
+
+    def relay_panel_notifications(self) -> None:
+        """Powiadomienia z panelu (np. „klient przesłał pliki”) – Monika wysyła je ze swojego adresu, z jej stopką.
+        Odbiorcy jak przy każdym mailu Moniki: tylko z guards.allowed_recipients. Gdy ktoś jest spoza listy albo wysyłka
+        się nie uda – powiadomienie wraca do panelu, który wysyła je sam (nic nie przepada)."""
+        panel = self.integrations.panel
+        if panel is None or not hasattr(panel, "pending_notifications"):
+            return
+        if time.monotonic() - self._notified_at < self.NOTIFY_EVERY_S:
+            return
+        self._notified_at = time.monotonic()
+        try:
+            items = panel.pending_notifications()
+        except Exception as e:  # panel chwilowo niedostępny – spróbujemy za minutę
+            self.audit.record("panel_notifications_error", error=str(e)[:200])
+            return
+        for n in items:
+            to = [a for a in n.get("to") or [] if isinstance(a, str)]
+            cc = [a for a in n.get("cc") or [] if isinstance(a, str)]
+            payload = {"to": to, "cc": cc, "subject": str(n.get("subject") or "")[:300], "body": str(n.get("body") or "")[:20000]}
+            d = guards.evaluate(self.cfg, guards.SEND_MAIL, payload)
+            if d.verdict != guards.Verdict.ALLOW:
+                ok, err = False, d.reason
+            else:
+                try:
+                    self.integrations.mail.send(to, payload["subject"], payload["body"], cc=cc or None)
+                    ok, err = True, ""
+                except Exception as e:
+                    ok, err = False, f"wysyłka: {e}"[:300]
+            self.audit.record("panel_notification", id=n.get("id"), sent=ok, reason=err, to=to, cc=cc, subject=payload["subject"])
+            try:
+                panel.ack_notification(n["id"], ok, err)
+            except Exception as e:
+                self.audit.record("panel_notifications_error", error=f"potwierdzenie: {e}"[:200])
+
     def tick(self) -> str:
         """Jeden cykl. Zwraca: 'halted' | 'tampered' | 'ok'."""
         if guards.config_tampered(self.cfg):
@@ -541,6 +578,7 @@ class Agent:
             self.audit.record("resume", reason="plik STOP usunięty przez człowieka")
             self._halted = False
         self.ingest_mail()
+        self.relay_panel_notifications()
         self._sweep_staged()
         if self.workers <= 1:
             while not self._stop.is_set() and not guards.kill_switch_active(self.cfg) and self.process_next():
