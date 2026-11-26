@@ -198,6 +198,8 @@ def test_panel_back_link_and_messages(panel):  # noqa: F811
     assert "Wróć do listy plików" in page and '<a href="/"' in page
     page = urllib.request.urlopen(url + "/?msg=" + quote("już jest w bazie") + "&bad=1").read().decode()
     assert page.count("już jest w bazie") == 2          # na górze i przy formularzu dodawania
+    assert "history.replaceState" in page and "noindex" in page   # komunikat znika z adresu; strona poza wyszukiwarkami
+    assert "history.replaceState" not in urllib.request.urlopen(url + "/").read().decode()
 
 
 def test_panel_duplicates_page(panel):  # noqa: F811
