@@ -1,6 +1,7 @@
 """Panel kancelarii (panel.kancelariabil.pl) – działa na tym samym serwerze, wywołanie tylko lokalne.
 
-Wywołania: oferta z maila w DW (POST /api/monika/oferta) i kopia maila do Skrzynki DW (POST /api/monika/dw). Klucz w .env (PANEL_API_KEY),
+Wywołania: oferta z maila w DW (POST /api/monika/oferta), kopia maila do Skrzynki DW (POST /api/monika/dw)
+i powiadomienia do wysłania przez Monikę (GET/POST /api/monika/powiadomienia, np. „klient przesłał pliki”). Klucz w .env (PANEL_API_KEY),
 adres stały – lokalny port panelu (PANEL_URL może go zmienić, ale wyłącznie na 127.0.0.1/localhost).
 """
 
@@ -32,6 +33,13 @@ class PanelGateway(ABC):
     @abstractmethod
     def add_dw(self, mail: dict[str, Any], files: list[Path]) -> str:
         """Kopia maila z Moniką w DW do Skrzynki DW; zwraca id wpisu w panelu."""
+
+    def pending_notifications(self) -> list[dict[str, Any]]:
+        """Powiadomienia wewnętrzne z panelu do wysłania przez Monikę: [{id, to: [..], cc: [..], subject, body}]."""
+        return []
+
+    def ack_notification(self, notification_id: str, ok: bool, error: str = "") -> None:
+        """Wynik wysyłki – błąd oddaje powiadomienie panelowi (wyśle je sam)."""
 
 
 def panel_base_url(value: str | None) -> str:
@@ -75,9 +83,22 @@ class HttpPanel(PanelGateway):
         }
         return self._post("/api/monika/dw", body, "mail z DW")
 
+    def pending_notifications(self) -> list[dict[str, Any]]:
+        if len(self._key) < 32:
+            return []
+        data = self._request("GET", "/api/monika/powiadomienia", None, "powiadomienia")
+        items = data.get("items") or []
+        return [i for i in items if isinstance(i, dict) and isinstance(i.get("id"), str)]
+
+    def ack_notification(self, notification_id: str, ok: bool, error: str = "") -> None:
+        self._request("POST", "/api/monika/powiadomienia", {"id": notification_id, "ok": ok, "error": error[:300]}, "wynik powiadomienia")
+
     def _post(self, path: str, body: dict[str, Any], what: str) -> str:
+        return str(self._request("POST", path, body, what).get("id", ""))
+
+    def _request(self, method: str, path: str, body: dict[str, Any] | None, what: str) -> dict[str, Any]:
         req = urllib.request.Request(
-            f"{self.base_url}{path}", data=json.dumps(body).encode(), method="POST",
+            f"{self.base_url}{path}", data=None if body is None else json.dumps(body).encode(), method=method,
             headers={"Content-Type": "application/json", "Authorization": f"Bearer {self._key}"})
         try:
             with urllib.request.urlopen(req, timeout=self.timeout) as r:   # noqa: S310 – adres lokalny, sprawdzony
@@ -92,7 +113,7 @@ class HttpPanel(PanelGateway):
             raise PanelError(f"panel niedostępny: {e}") from None
         if not data.get("ok"):
             raise PanelError(f"panel odrzucił {what}: {data.get('error', '')}")
-        return str(data.get("id", ""))
+        return data
 
 
 def build_panel(env: dict[str, str] | None = None) -> HttpPanel:

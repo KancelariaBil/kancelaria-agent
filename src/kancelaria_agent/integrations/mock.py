@@ -48,6 +48,8 @@ class MockPanel:
     def __init__(self):
         self.offers: list[dict[str, Any]] = []
         self.dw: list[dict[str, Any]] = []
+        self.notifications: list[dict[str, Any]] = []   # czekające w panelu
+        self.acks: list[tuple[str, bool, str]] = []
 
     def add_offer(self, offer, file_path) -> str:
         self.offers.append({**offer, "file_path": str(file_path) if file_path else None})
@@ -56,6 +58,13 @@ class MockPanel:
     def add_dw(self, mail, files) -> str:
         self.dw.append({**mail, "file_paths": [str(f) for f in files]})
         return f"mock-dw-{len(self.dw)}"
+
+    def pending_notifications(self):
+        out, self.notifications = self.notifications, []
+        return out
+
+    def ack_notification(self, notification_id, ok, error=""):
+        self.acks.append((notification_id, ok, error))
 
 
 def build_mock(inbox: list[IncomingMail] | None = None) -> Integrations:
