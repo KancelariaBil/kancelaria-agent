@@ -65,6 +65,19 @@ d.addEventListener('click',()=>f.click());
 """
 
 
+# Komunikat po dodaniu / przeniesieniu / usunięciu: znika z adresu od razu (odświeżenie go nie pokaże),
+# a z ekranu po chwili – dłuższy tekst zostaje dłużej; kliknięcie zamyka od razu.
+MSG_JS = """
+window.scrollTo(0,0);
+history.replaceState(null,'',location.pathname);
+document.querySelectorAll('.msg').forEach(m=>{
+const hide=()=>{m.style.transition='opacity .6s';m.style.opacity='0';setTimeout(()=>m.remove(),650);};
+m.title='Kliknij, żeby zamknąć';m.style.cursor='pointer';m.addEventListener('click',hide);
+setTimeout(hide,Math.min(30000,Math.max(8000,m.textContent.length*60)));
+});
+"""
+
+
 def _size(n: int) -> str:
     return f"{n / 2**20:.1f} MB" if n >= 2**20 else f"{max(1, n // 1024)} KB"
 
@@ -72,11 +85,11 @@ def _size(n: int) -> str:
 def _page(body: str, msg: str = "", bad: bool = False) -> bytes:
     m = f'<div class="msg{" bad" if bad else ""}">{html.escape(msg)}</div>' if msg else ""
     return f"""<!doctype html><html lang="pl"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>Monika – baza wiedzy</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Monika – baza wiedzy</title>
 <style>{CSS}</style></head><body><main>
 <header><h1><a href="/" style="color:inherit;text-decoration:none">Monika</a> <small>baza wiedzy kancelarii</small></h1>
-<span class="note">wersja testowa · bez logowania · tylko dane fikcyjne</span></header>
-{m}{body}</main><script>{JS}{"if(document.querySelector('.msg'))window.scrollTo(0,0);" if msg else ""}</script></body></html>""".encode()
+<span class="note">dostęp tylko dla kancelarii (hasło)</span></header>
+{m}{body}</main><script>{JS}{MSG_JS if msg else ""}</script></body></html>""".encode()
 
 
 def _cat_label(e) -> str:
