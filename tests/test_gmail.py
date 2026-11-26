@@ -267,3 +267,50 @@ def test_untrusted_report_without_sender_shows_headers():
     body = _untrusted_report({"sender": m.sender, "subject": m.subject, "body": m.body, "headers": m.headers,
                               "message_id": m.message_id, "date": None}, "lukasz@brandwise.pl")[0].payload["body"]
     assert "nie udało się odczytać" in body and "> X-Origin: system" in body and "imap-uid-7" in body
+
+
+class _Tok:
+    def access_token(self):
+        return "tok"
+
+
+def _with_signature(monkeypatch, payload=None, fail=False):
+    import io
+    from kancelaria_agent.integrations import gmail as g
+    calls = []
+
+    def fake_urlopen(req, timeout=None):
+        calls.append(req.full_url)
+        if fail:
+            raise OSError("brak sieci")
+        return io.BytesIO(json.dumps(payload or {}).encode())
+    monkeypatch.setattr(g.urllib.request, "urlopen", fake_urlopen)
+    m = GmailMail(SETTINGS)
+    m._tokens = _Tok()
+    return m, calls
+
+
+def test_gmail_signature_added_to_text_and_html(monkeypatch):
+    sig = '<div><img src="https://x/logo.png"> <b>Monika</b><br>Wirtualna Asystentka</div>'
+    m, calls = _with_signature(monkeypatch, {"signature": sig})
+    msg = m._build(["a@b.pl"], "Temat", "Treść <ważna>\nlinia 2", None)
+    text = msg.get_body(("plain",)).get_content()
+    page = msg.get_body(("html",)).get_content()
+    assert "-- \nMonika\nWirtualna Asystentka" in text and "Treść <ważna>" in text
+    assert sig in page and "Treść &lt;ważna&gt;<br>" in page
+    m._build(["a@b.pl"], "T2", "b", None)
+    assert len(calls) == 1 and calls[0].endswith("/settings/sendAs/agent%40brandwise.pl")   # pobrana raz, z pamięci
+
+
+def test_no_signature_when_gmail_unreachable(monkeypatch):
+    m, _ = _with_signature(monkeypatch, fail=True)
+    msg = m._build(["a@b.pl"], "T", "sama treść", None)
+    assert not msg.is_multipart() and msg.get_content().strip() == "sama treść"
+
+
+def test_signature_kept_with_attachment(monkeypatch, tmp_path):
+    f = tmp_path / "x.pdf"
+    f.write_bytes(b"%PDF-1.4")
+    m, _ = _with_signature(monkeypatch, {"signature": "<b>Monika</b>"})
+    msg = m._build(["a@b.pl"], "T", "b", None, attachments=[str(f)])
+    assert msg.get_body(("html",)) is not None and [p.get_filename() for p in msg.iter_attachments()] == ["x.pdf"]
